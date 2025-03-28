@@ -1,9 +1,5 @@
-// ignore_for_file: library_private_types_in_public_api
-
 import 'package:flutter/material.dart';
-// import 'package:your_app/forgot_password_page.dart';
-// import 'package:your_app/sign_up_page.dart';
-// import 'package:your_app/home_page.dart';
+import 'package:studyflow/utilities/colors.dart';
 
 class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
@@ -14,110 +10,187 @@ class SignInPage extends StatefulWidget {
 
 class _SignInPageState extends State<SignInPage> {
   final _formKey = GlobalKey<FormState>();
-  // ignore: unused_field
-  String _username = '';
-  // ignore: unused_field
-  String _password = '';
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _usersPassword = true;
   bool _rememberMe = false;
-
-  void _signIn() async {
-    /* uncomment to go to home page
-    if (_formKey.currentState!.validate()) {
-      // Start the authentication process
-      // ...
-      // If successful, navigate to the home page
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => HomePage()),
-      );
-    }
-    */
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Sign In'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              TextFormField(
-                decoration: InputDecoration(
-                  labelText: 'Username',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value!.isEmpty) {
-                    return 'Please enter your username';
-                  }
-                  return null;
-                },
-                onSaved: (value) => _username = value!,
-              ),
-              SizedBox(height: 20),
-              TextFormField(
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
-                ),
-                obscureText: true,
-                validator: (value) {
-                  if (value!.isEmpty) {
-                    return 'Please enter your password';
-                  }
-                  return null;
-                },
-                onSaved: (value) => _password = value!,
-              ),
-              SizedBox(height: 20),
-              Row(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Checkbox(
-                    value: _rememberMe,
-                    onChanged: (value) {
-                      setState(() {
-                        _rememberMe = value!;
-                      });
+                  Image.asset(
+                    'assets/signinlogoandtext.png',
+                    width: 190,
+                    height: 190,
+                  ),
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    controller: _usernameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Username',
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textColor,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.person,
+                        color: AppColors.textColor,
+                      ),
+                      border: OutlineInputBorder(
+                          borderSide: BorderSide(
+                        color: AppColors.textColor,
+                      )),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          width: 2.5,
+                          color: AppColors.secondaryColor,
+                        ),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter your username';
+                      }
+                      return null;
                     },
                   ),
-                  Text('Remember Me'),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _usersPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textColor,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.lock,
+                        color: AppColors.textColor,
+                      ),
+                      border: OutlineInputBorder(
+                          borderSide: BorderSide(
+                        color: AppColors.textColor,
+                      )),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          width: 2.5,
+                          color: AppColors.secondaryColor,
+                        ),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _usersPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          color: AppColors.textColor,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _usersPassword = !_usersPassword;
+                          });
+                        },
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter your password';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _rememberMe,
+                        onChanged: (value) {
+                          setState(() {
+                            _rememberMe = value ?? false;
+                          });
+                        },
+                        checkColor: AppColors.primaryColor,
+                        activeColor: AppColors.secondaryColor,
+                        side: BorderSide(
+                          color: AppColors.secondaryColor,
+                          width: 2.0,
+                        ),
+                      ),
+                      const Text(
+                        'Remember me',
+                        style: TextStyle(
+                          color: AppColors.textColor,
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          // Navigate to Forgot Password page
+                        },
+                        child: const Text(
+                          'Forgot Password?',
+                          style: TextStyle(
+                            color: AppColors.secondaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (_formKey.currentState!.validate()) {
+                        // Handle login action
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: AppColors.primaryColor,
+                      backgroundColor: AppColors.secondaryColor,
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('Login'),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        "Don't have an account?",
+                        style: TextStyle(
+                          color: AppColors.textColor,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          // Navigate to Sign Up page
+                        },
+                        child: const Text(
+                          'Sign Up',
+                          style: TextStyle(
+                            color: AppColors.secondaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _signIn,
-                child: Text('Login'),
-              ),
-              SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  /* uncomment to go to forgot password page
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => ForgotPasswordPage()),
-                  );
-                  */
-                },
-                child: Text('Forgot Password'),
-              ),
-              SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  /* uncomment to go to sign up page
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => SignUpPage()),
-                  );
-                  */
-                },
-                child: Text('Create an Account'),
-              ),
-            ],
+            ),
           ),
         ),
       ),
