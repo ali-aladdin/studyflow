@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:studyflow/utilities/colors.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -28,13 +29,21 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Image.asset('assets/icon.png', width: 100, height: 100),
+            Image.asset('assets/icon.png', width: 150, height: 150),
+            SizedBox(height: 15),
             Text(
               'StudyFlow',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textColor,
+              ),
             ),
             SizedBox(height: 20),
-            CircularProgressIndicator(),
+            CircularProgressIndicator(
+              color: AppColors.secondaryColor,
+              strokeWidth: 6,
+            ),
           ],
         ),
       ),
