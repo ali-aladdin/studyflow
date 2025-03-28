@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:studyflow/pages/signin_page.dart';
 import 'package:studyflow/utilities/colors.dart';
 
 class SignUpPage extends StatefulWidget {
@@ -13,7 +14,7 @@ class _SignUpPageState extends State<SignUpPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  bool _obscurePassword = true;
+  bool _userPassword = true;
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +30,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Image.asset(
-                    'assets/signuplogo.png',
+                    'assets/signuplogoandtext.png',
                     width: 190,
                     height: 190,
                   ),
@@ -104,7 +105,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   // Password Input Field
                   TextFormField(
                     controller: _passwordController,
-                    obscureText: _obscurePassword,
+                    obscureText: _userPassword,
                     decoration: InputDecoration(
                       labelText: 'Password',
                       labelStyle: const TextStyle(
@@ -128,14 +129,14 @@ class _SignUpPageState extends State<SignUpPage> {
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword
+                          _userPassword
                               ? Icons.visibility_off
                               : Icons.visibility,
                           color: AppColors.textColor,
                         ),
                         onPressed: () {
                           setState(() {
-                            _obscurePassword = !_obscurePassword;
+                            _userPassword = !_userPassword;
                           });
                         },
                       ),
@@ -151,9 +152,18 @@ class _SignUpPageState extends State<SignUpPage> {
                   // Sign Up Button
                   ElevatedButton(
                     onPressed: () {
+                      // TODO
+                      /*
                       if (_formKey.currentState!.validate()) {
                         // Handle sign up action
                       }
+                      */
+
+                      //! delete later
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => SignInPage()),
+                      );
                     },
                     style: ElevatedButton.styleFrom(
                       foregroundColor: AppColors.primaryColor,
@@ -173,16 +183,22 @@ class _SignUpPageState extends State<SignUpPage> {
                       const Text(
                         'Already registered?',
                         style: TextStyle(
+                          fontSize: 16,
                           color: AppColors.textColor,
                         ),
                       ),
                       TextButton(
                         onPressed: () {
-                          // Navigate back to Sign In page
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => SignInPage()),
+                          );
                         },
                         child: const Text(
                           'Sign In',
                           style: TextStyle(
+                            fontSize: 18,
                             color: AppColors.secondaryColor,
                             fontWeight: FontWeight.bold,
                           ),

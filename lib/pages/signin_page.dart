@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:studyflow/pages/home_page.dart';
 import 'package:studyflow/pages/signup_page.dart';
 import 'package:studyflow/utilities/colors.dart';
 
@@ -13,7 +14,7 @@ class _SignInPageState extends State<SignInPage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  bool _usersPassword = true;
+  bool _userPassword = true;
   bool _rememberMe = false;
 
   @override
@@ -68,7 +69,7 @@ class _SignInPageState extends State<SignInPage> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _passwordController,
-                    obscureText: _usersPassword,
+                    obscureText: _userPassword,
                     decoration: InputDecoration(
                       labelText: 'Password',
                       labelStyle: TextStyle(
@@ -91,14 +92,14 @@ class _SignInPageState extends State<SignInPage> {
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _usersPassword
+                          _userPassword
                               ? Icons.visibility_off
                               : Icons.visibility,
                           color: AppColors.textColor,
                         ),
                         onPressed: () {
                           setState(() {
-                            _usersPassword = !_usersPassword;
+                            _userPassword = !_userPassword;
                           });
                         },
                       ),
@@ -130,6 +131,7 @@ class _SignInPageState extends State<SignInPage> {
                       const Text(
                         'Remember me',
                         style: TextStyle(
+                          fontSize: 14,
                           color: AppColors.textColor,
                         ),
                       ),
@@ -141,6 +143,7 @@ class _SignInPageState extends State<SignInPage> {
                         child: const Text(
                           'Forgot Password?',
                           style: TextStyle(
+                            fontSize: 16,
                             color: AppColors.secondaryColor,
                             fontWeight: FontWeight.bold,
                           ),
@@ -151,9 +154,18 @@ class _SignInPageState extends State<SignInPage> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () {
+                      // TODO
+                      /*
                       if (_formKey.currentState!.validate()) {
-                        // Handle login action
+                        // Handle sign up action
                       }
+                      */
+
+                      //! delete later
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => HomePage()),
+                      );
                     },
                     style: ElevatedButton.styleFrom(
                       foregroundColor: AppColors.primaryColor,
@@ -172,6 +184,7 @@ class _SignInPageState extends State<SignInPage> {
                       const Text(
                         "Don't have an account?",
                         style: TextStyle(
+                          fontSize: 16,
                           color: AppColors.textColor,
                         ),
                       ),
@@ -186,6 +199,7 @@ class _SignInPageState extends State<SignInPage> {
                         child: const Text(
                           'Sign Up',
                           style: TextStyle(
+                            fontSize: 18,
                             color: AppColors.secondaryColor,
                             fontWeight: FontWeight.bold,
                           ),
