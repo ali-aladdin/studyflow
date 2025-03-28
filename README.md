@@ -1,16 +1,17 @@
-# studyflow
+# StudyFlow
 
-A new Flutter project.
+**Streamline Your Study Sessions with Ease**
 
-## Getting Started
+![StudyFlow Logo](assets/icon.png)
 
-This project is a starting point for a Flutter application.
+## Overview
 
-A few resources to get you started if this is your first Flutter project:
+StudyFlow is a dynamic application designed to enhance your study experience by providing tools for creating, organizing, and sharing notes and flashcards. With real-time collaboration features, StudyFlow ensures that you and your peers can stay connected and productive, no matter where you are.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Features
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- **User Profiles:** Customize your personal information and manage account settings effortlessly.
+- **Notes Management:** Create, edit, and organize your study notes with support for tagging and categorization.
+- **Flashcards:** Develop and review flashcards to reinforce learning and improve retention.
+- **Collaborative Groups:** Form study groups with peers, share resources, and communicate in real-time.
+
