@@ -1,20 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:studyflow/pages/signup_page.dart';
 import 'package:studyflow/utilities/colors.dart';
 
-class SignInPage extends StatefulWidget {
-  const SignInPage({super.key});
+class SignUpPage extends StatefulWidget {
+  const SignUpPage({super.key});
 
   @override
-  _SignInPageState createState() => _SignInPageState();
+  _SignUpPageState createState() => _SignUpPageState();
 }
 
-class _SignInPageState extends State<SignInPage> {
+class _SignUpPageState extends State<SignUpPage> {
   final _formKey = GlobalKey<FormState>();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  bool _usersPassword = true;
-  bool _rememberMe = false;
+  bool _obscurePassword = true;
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +29,46 @@ class _SignInPageState extends State<SignInPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Image.asset(
-                    'assets/signinlogoandtext.png',
+                    'assets/signuplogo.png',
                     width: 190,
                     height: 190,
                   ),
                   const SizedBox(height: 24),
+                  // Email Input Field
+                  TextFormField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textColor,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.email,
+                        color: AppColors.textColor,
+                      ),
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          color: AppColors.textColor,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          width: 2.5,
+                          color: AppColors.secondaryColor,
+                        ),
+                      ),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter your email address';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  // Username Input Field
                   TextFormField(
                     controller: _usernameController,
                     decoration: const InputDecoration(
@@ -48,9 +82,10 @@ class _SignInPageState extends State<SignInPage> {
                         color: AppColors.textColor,
                       ),
                       border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                        color: AppColors.textColor,
-                      )),
+                        borderSide: BorderSide(
+                          color: AppColors.textColor,
+                        ),
+                      ),
                       focusedBorder: OutlineInputBorder(
                         borderSide: BorderSide(
                           width: 2.5,
@@ -60,18 +95,19 @@ class _SignInPageState extends State<SignInPage> {
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'Please enter your username';
+                        return 'Please enter a username';
                       }
                       return null;
                     },
                   ),
                   const SizedBox(height: 16),
+                  // Password Input Field
                   TextFormField(
                     controller: _passwordController,
-                    obscureText: _usersPassword,
+                    obscureText: _obscurePassword,
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      labelStyle: TextStyle(
+                      labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: AppColors.textColor,
                       ),
@@ -79,11 +115,12 @@ class _SignInPageState extends State<SignInPage> {
                         Icons.lock,
                         color: AppColors.textColor,
                       ),
-                      border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                        color: AppColors.textColor,
-                      )),
-                      focusedBorder: OutlineInputBorder(
+                      border: const OutlineInputBorder(
+                        borderSide: BorderSide(
+                          color: AppColors.textColor,
+                        ),
+                      ),
+                      focusedBorder: const OutlineInputBorder(
                         borderSide: BorderSide(
                           width: 2.5,
                           color: AppColors.secondaryColor,
@@ -91,68 +128,31 @@ class _SignInPageState extends State<SignInPage> {
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _usersPassword
+                          _obscurePassword
                               ? Icons.visibility_off
                               : Icons.visibility,
                           color: AppColors.textColor,
                         ),
                         onPressed: () {
                           setState(() {
-                            _usersPassword = !_usersPassword;
+                            _obscurePassword = !_obscurePassword;
                           });
                         },
                       ),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'Please enter your password';
+                        return 'Please enter a password';
                       }
                       return null;
                     },
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: _rememberMe,
-                        onChanged: (value) {
-                          setState(() {
-                            _rememberMe = value ?? false;
-                          });
-                        },
-                        checkColor: AppColors.primaryColor,
-                        activeColor: AppColors.secondaryColor,
-                        side: BorderSide(
-                          color: AppColors.secondaryColor,
-                          width: 2.0,
-                        ),
-                      ),
-                      const Text(
-                        'Remember me',
-                        style: TextStyle(
-                          color: AppColors.textColor,
-                        ),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () {
-                          // Navigate to Forgot Password page
-                        },
-                        child: const Text(
-                          'Forgot Password?',
-                          style: TextStyle(
-                            color: AppColors.secondaryColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
+                  // Sign Up Button
                   ElevatedButton(
                     onPressed: () {
                       if (_formKey.currentState!.validate()) {
-                        // Handle login action
+                        // Handle sign up action
                       }
                     },
                     style: ElevatedButton.styleFrom(
@@ -163,28 +163,25 @@ class _SignInPageState extends State<SignInPage> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: const Text('Login'),
+                    child: const Text('Sign Up'),
                   ),
                   const SizedBox(height: 16),
+                  // Already Registered Section
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Text(
-                        "Don't have an account?",
+                        'Already registered?',
                         style: TextStyle(
                           color: AppColors.textColor,
                         ),
                       ),
                       TextButton(
                         onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => SignUpPage()),
-                          );
+                          // Navigate back to Sign In page
                         },
                         child: const Text(
-                          'Sign Up',
+                          'Sign In',
                           style: TextStyle(
                             color: AppColors.secondaryColor,
                             fontWeight: FontWeight.bold,
