@@ -54,6 +54,11 @@ class _HomePageState extends State<HomePage> {
     // If tapped index is greater than 2, subtract 1 because our _pages list is of length 4.
     if (index == 2) {
       _onPlusPressed();
+    } else if (index == 4) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => SettingsScreen()),
+      );
     } else {
       setState(() {
         _selectedIndex = index < 2 ? index : index - 1;

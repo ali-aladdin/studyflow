@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:studyflow/utilities/colors.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,8 +12,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Text('Settings Screen'),
+      appBar: AppBar(
+        centerTitle: true,
+        backgroundColor: AppColors.primaryColor,
+        title: const Text(
+          'User Settings',
+          style: TextStyle(
+            color: AppColors.textColor,
+          ),
+        ),
       ),
     );
   }

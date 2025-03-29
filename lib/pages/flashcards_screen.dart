@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:studyflow/utilities/colors.dart';
 
 class FlashcardsScreen extends StatefulWidget {
   const FlashcardsScreen({super.key});
@@ -11,8 +12,15 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Text('Flashcards Screen'),
+      appBar: AppBar(
+        centerTitle: true,
+        backgroundColor: AppColors.secondaryColor,
+        title: const Text(
+          'Flashcards',
+          style: TextStyle(
+            color: AppColors.primaryColor,
+          ),
+        ),
       ),
     );
   }
