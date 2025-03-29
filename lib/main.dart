@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:studyflow/pages/home_page.dart';
-import 'package:studyflow/pages/splash_screen.dart';
 import 'package:studyflow/utilities/colors.dart';
 import 'firebase_options.dart';
 

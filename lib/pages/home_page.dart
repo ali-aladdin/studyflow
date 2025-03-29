@@ -15,15 +15,13 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
 
-  // List of pages corresponding to each bottom navigation item.
   final List<Widget> _pages = const [
-    HomeScreen(), // Group Chat Sessions page
-    FlashcardsScreen(), // Flashcards page
+    HomeScreen(), // Home page (Group Chat Sessions)
     NotesScreen(), // Notes page
+    FlashcardsScreen(), // Flashcards page
     SettingsScreen(), // Settings page
   ];
 
-  // The Floating Action Button (FAB) action depends on the current page.
   void _onPlusPressed() {
     String action;
     switch (_selectedIndex) {
@@ -37,60 +35,75 @@ class _HomePageState extends State<HomePage> {
         action = 'Add Note';
         break;
       case 3:
-        action = 'Edit Settings'; // example, adjust as needed
+        action = 'Edit Settings';
         break;
       default:
         action = 'Action';
         break;
     }
-    // For now, just display a Snackbar indicating the action.
+    // For demonstration, we'll show a Snackbar indicating the action.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(action)),
     );
   }
 
+  // When a non-add nav bar item is tapped, update the page.
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    // The Add button is at index 2. For other indexes, adjust the mapping:
+    // If tapped index is less than 2, it maps directly.
+    // If tapped index is greater than 2, subtract 1 because our _pages list is of length 4.
+    if (index == 2) {
+      _onPlusPressed();
+    } else {
+      setState(() {
+        _selectedIndex = index < 2 ? index : index - 1;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: _pages[_selectedIndex],
-      floatingActionButton: FloatingActionButton(
-        onPressed: _onPlusPressed,
+      bottomNavigationBar: BottomNavigationBar(
+        elevation: 0,
+        iconSize: 35,
         backgroundColor: AppColors.secondaryColor,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
-          type: BottomNavigationBarType.fixed,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.flash_on),
-              label: 'Flashcards',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.note),
-              label: 'Notes',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.settings),
-              label: 'Settings',
-            ),
-          ],
+        selectedItemColor: AppColors.textColor,
+        unselectedItemColor: AppColors.primaryColor,
+        currentIndex: _selectedIndex < 2 ? _selectedIndex : _selectedIndex + 1,
+        onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed,
+        showUnselectedLabels: false,
+        selectedLabelStyle: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: AppColors.textColor,
         ),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_filled),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.menu_book_rounded),
+            label: 'Notes',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(
+              Icons.add_circle_outline,
+              size: 50,
+            ),
+            label: 'Add',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.credit_card),
+            label: 'Flashcards',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
       ),
     );
   }
