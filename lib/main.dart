@@ -193,40 +193,66 @@ const Color warningErrorColor = Color.fromARGB(255, 240, 42, 42);
  */
 class HomeState extends ChangeNotifier {
   bool _inGroup = false;
+  String? _currentGroupId; // To store the current group ID
 
   bool get inGroup => _inGroup;
+  String? get currentGroupId => _currentGroupId;
 
-  void toggleIsSomething() {
-    _inGroup = !_inGroup;
+  void setInGroup(bool value, {String? groupId}) {
+    _inGroup = value;
+    _currentGroupId = groupId; // Update the group ID
     notifyListeners();
   }
 }
 
 class GroupState extends ChangeNotifier {
+  String? _groupId; // Add this
   String? _groupName;
   String? _groupCode;
-  final List<String> _messages = [];
-  final List<String> _members = []; // Added _members variable
+  final List<Message> _messages = []; // Use the Message class instead of String
+  List<String> _members = [];
+  String? _ownerId;
 
+  String? get groupId => _groupId; //add this
   String? get groupName => _groupName;
   String? get groupCode => _groupCode;
-  List<String> get messages => _messages;
-  List<String> get members => _members; // Added getter for _members
+  List<Message> get messages => _messages;
+  List<String> get members => _members;
+  String? get ownerId => _ownerId;
+
+  void setGroup(Group group) {
+    _groupId = group.groupId;
+    _groupName = group.groupName;
+    _groupCode = group.groupCode;
+    _members = group.members;
+    notifyListeners();
+  }
+
+  void setOwnerId(String ownerId) {
+    _ownerId = ownerId;
+    notifyListeners();
+  }
+
+  void setGroupId(String groupId) {
+    _groupId = groupId;
+    notifyListeners();
+  }
 
   void setName(String name) {
     _groupName = name;
+    notifyListeners();
   }
 
   void setCode(String code) {
     _groupCode = code;
-  }
-
-  void sendMessage(String msg) {
-    _messages.add(msg);
     notifyListeners();
   }
 
-  // You might want to add methods to manage the members list, e.g., addMember, removeMember
+  void addMessage(Message message) {
+    _messages.add(message);
+    notifyListeners();
+  }
+
   void addMember(String member) {
     _members.add(member);
     notifyListeners();
@@ -236,76 +262,220 @@ class GroupState extends ChangeNotifier {
     _members.remove(member);
     notifyListeners();
   }
+
+  void clearGroup() {
+    //clear group
+    _groupId = null;
+    _groupName = null;
+    _groupCode = null;
+    _messages.clear();
+    _members.clear();
+    _ownerId = null;
+    notifyListeners();
+  }
 }
 
 class NoteState extends ChangeNotifier {
-  final List<Note> _notes = [
-    Note(id: '1', title: 'Math Summary', content: 'Here are some formulas...'),
-    Note(id: '2', title: 'Chemistry', content: 'Atomic structure and...'),
-    Note(id: '3', title: 'History', content: 'World War II timeline...'),
-  ];
-
+  List<Note> _notes = [];
   List<Note> get notes => _notes;
 
-  void addNote(Note newNote) {
-    _notes.add(newNote);
-    notifyListeners();
+  // Firestore collection reference
+  CollectionReference<Note> get notesCollection {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('User not logged in'); // Or handle this appropriately
+    }
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('notes')
+        .withConverter<Note>(
+          fromFirestore: Note.fromFirestore,
+          toFirestore: (Note note, SetOptions? options) => note.toFirestore(),
+        );
   }
 
-  void deleteNote(Note noteToDelete) {
-    _notes.remove(noteToDelete);
-    notifyListeners();
+  NoteState() {
+    fetchNotes();
   }
 
-  void editTitle(String id, String newTitle) {
-    final index = _notes.indexWhere((note) => note.id == id);
-    if (index != -1) {
-      _notes[index] = _notes[index].copyWith(title: newTitle);
+  // Fetch notes from Firestore
+  Future<void> fetchNotes() async {
+    try {
+      final snapshot = await notesCollection.get();
+      _notes = snapshot.docs.map((doc) => doc.data()).toList();
       notifyListeners();
+    } catch (e) {
+      logger.e('Error fetching notes: $e');
+      // Handle error (e.g., show a message to the user)
     }
   }
 
-  void editContent(String id, String newContent) {
-    final index = _notes.indexWhere((note) => note.id == id);
-    if (index != -1) {
-      _notes[index] = _notes[index].copyWith(content: newContent);
+  // Add a new note to Firestore
+  Future<void> addNote(Note note) async {
+    try {
+      final docRef = await notesCollection.add(note);
+      final newNote = Note(
+          id: docRef.id,
+          title: note.title,
+          content: note.content,
+          pinned: note.pinned); //get ID
+      _notes.add(newNote);
       notifyListeners();
+    } catch (e) {
+      logger.e('Error adding note: $e');
+      // Handle error
+    }
+  }
+
+  // Update an existing note in Firestore
+  Future<void> updateNote(Note updatedNote) async {
+    try {
+      await notesCollection.doc(updatedNote.id).update({
+        'title': updatedNote.title,
+        'content': updatedNote.content,
+        'pinned': updatedNote.pinned,
+      });
+      final index = _notes.indexWhere((note) => note.id == updatedNote.id);
+      if (index != -1) {
+        _notes[index] = updatedNote;
+        notifyListeners();
+      }
+    } catch (e) {
+      logger.e('Error updating note: $e');
+      // Handle error
+    }
+  }
+
+  // Delete a note from Firestore
+  Future<void> deleteNote(String noteId) async {
+    try {
+      await notesCollection.doc(noteId).delete();
+      _notes.removeWhere((note) => note.id == noteId);
+      notifyListeners();
+    } catch (e) {
+      logger.e('Error deleting note: $e');
+      // Handle error
+    }
+  }
+
+  // Pin a note
+  Future<void> pinNote(String noteId, bool pinned) async {
+    try {
+      await notesCollection.doc(noteId).update({'pinned': pinned});
+      final index = _notes.indexWhere((note) => note.id == noteId);
+      if (index != -1) {
+        _notes[index] = _notes[index].copyWith(pinned: pinned);
+        notifyListeners();
+      }
+    } catch (e) {
+      logger.e('Error pinning note: $e');
+      // Handle error.  You might want to show a message to the user.
     }
   }
 }
 
 class FlashcardState extends ChangeNotifier {
-  final List<Flashcard> _cards = [
-    Flashcard(id: '1', title: 'Pythagorean Theorem', content: 'a² + b² = c²'),
-    Flashcard(id: '2', title: 'Newton’s Second Law', content: 'F = m · a'),
-    Flashcard(id: '3', title: 'Ohm’s Law', content: 'V = I · R'),
-  ];
+  List<Flashcard> _cards = [];
 
   List<Flashcard> get cards => _cards;
-
-  void addCard(Flashcard newCard) {
-    _cards.add(newCard);
-    notifyListeners();
+  // Firestore collection reference
+  CollectionReference<Flashcard> get flashcardsCollection {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('User not logged in'); // Or handle this appropriately
+    }
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('flashcards') // Changed collection name
+        .withConverter<Flashcard>(
+          fromFirestore: Flashcard.fromFirestore,
+          toFirestore: (Flashcard flashcard, SetOptions? options) =>
+              flashcard.toFirestore(),
+        );
   }
 
-  void deleteCard(Flashcard cardToDelete) {
-    _cards.remove(cardToDelete);
-    notifyListeners();
+  FlashcardState() {
+    fetchFlashcards();
   }
 
-  void editCardTitle(String id, String newTitle) {
-    final index = _cards.indexWhere((card) => card.id == id);
-    if (index != -1) {
-      _cards[index] = _cards[index].copyWith(title: newTitle);
+  // Fetch flashcards from Firestore
+  Future<void> fetchFlashcards() async {
+    try {
+      final snapshot = await flashcardsCollection.get();
+      _cards = snapshot.docs.map((doc) => doc.data()).toList();
       notifyListeners();
+    } catch (e) {
+      logger.e('Error fetching flashcards: $e');
+      // Handle error (e.g., show a message to the user)
     }
   }
 
-  void editCardContent(String id, String newContent) {
-    final index = _cards.indexWhere((card) => card.id == id);
-    if (index != -1) {
-      _cards[index] = _cards[index].copyWith(content: newContent);
+  // Add a new flashcard to Firestore
+  Future<void> addCard(Flashcard newCard) async {
+    try {
+      final docRef = await flashcardsCollection.add(newCard);
+      final newFlashcard = Flashcard(
+          id: docRef.id,
+          title: newCard.title,
+          content: newCard.content,
+          pinned: newCard.pinned); //get ID
+      _cards.add(newFlashcard);
       notifyListeners();
+    } catch (e) {
+      logger.e('Error adding flashcard: $e');
+      // Handle error
+    }
+  }
+
+  void deleteCard(Flashcard cardToDelete) async {
+    try {
+      await flashcardsCollection.doc(cardToDelete.id).delete();
+      _cards.removeWhere((card) => card.id == cardToDelete.id);
+      notifyListeners();
+    } catch (e) {
+      logger.e('Error deleting flashcard: $e');
+    }
+  }
+
+  Future<void> editCardTitle(String id, String newTitle) async {
+    try {
+      await flashcardsCollection.doc(id).update({'title': newTitle});
+      final index = _cards.indexWhere((card) => card.id == id);
+      if (index != -1) {
+        _cards[index] = _cards[index].copyWith(title: newTitle);
+        notifyListeners();
+      }
+    } catch (e) {
+      logger.e('Error updating flashcard title: $e');
+    }
+  }
+
+  Future<void> editCardContent(String id, String newContent) async {
+    try {
+      await flashcardsCollection.doc(id).update({'content': newContent});
+      final index = _cards.indexWhere((card) => card.id == id);
+      if (index != -1) {
+        _cards[index] = _cards[index].copyWith(content: newContent);
+        notifyListeners();
+      }
+    } catch (e) {
+      logger.e('Error updating flashcard content: $e');
+    }
+  }
+
+  Future<void> pinCard(String cardId, bool pinned) async {
+    try {
+      await flashcardsCollection.doc(cardId).update({'pinned': pinned});
+      final index = _cards.indexWhere((card) => card.id == cardId);
+      if (index != -1) {
+        _cards[index] = _cards[index].copyWith(pinned: pinned);
+        notifyListeners();
+      }
+    } catch (e) {
+      logger.e('Error pinning flashcard: $e');
+      // Handle error.  You might want to show a message to the user.
     }
   }
 }
@@ -356,11 +526,12 @@ class Note {
   final String title;
   final String content;
   bool pinned;
-  Note(
-      {required this.id,
-      required this.title,
-      required this.content,
-      this.pinned = false});
+  Note({
+    required this.id,
+    required this.title,
+    required this.content,
+    this.pinned = false,
+  });
 
   Note copyWith({
     String? id,
@@ -373,6 +544,27 @@ class Note {
       title: title ?? this.title,
       content: content ?? this.content,
       pinned: pinned ?? this.pinned,
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'title': title,
+      'content': content,
+      'pinned': pinned,
+    };
+  }
+
+  factory Note.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+    SnapshotOptions? options,
+  ) {
+    final data = snapshot.data();
+    return Note(
+      id: snapshot.id,
+      title: data?['title'] ?? '',
+      content: data?['content'] ?? '',
+      pinned: data?['pinned'] ?? false,
     );
   }
 }
@@ -392,11 +584,101 @@ class Flashcard {
     String? id,
     String? title,
     String? content,
+    bool? pinned,
   }) {
     return Flashcard(
       id: id ?? this.id,
       title: title ?? this.title,
       content: content ?? this.content,
+      pinned: pinned ?? this.pinned,
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'title': title,
+      'content': content,
+      'pinned': pinned,
+    };
+  }
+
+  factory Flashcard.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+    SnapshotOptions? options,
+  ) {
+    final data = snapshot.data();
+    return Flashcard(
+      id: snapshot.id,
+      title: data?['title'] ?? '',
+      content: data?['content'] ?? '',
+      pinned: data?['pinned'] ?? false,
+    );
+  }
+}
+
+class Group {
+  final String groupId;
+  final String ownerId;
+  final String groupName;
+  final String groupCode;
+  final List<String> members;
+
+  Group({
+    required this.groupId,
+    required this.ownerId,
+    required this.groupName,
+    required this.groupCode,
+    required this.members,
+  });
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'ownerId': ownerId,
+      'groupName': groupName,
+      'groupCode': groupCode,
+      'members': members,
+    };
+  }
+
+  factory Group.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+    SnapshotOptions? options,
+  ) {
+    final data = snapshot.data();
+    return Group(
+      groupId: snapshot.id,
+      ownerId: data?['ownerId'] ?? '',
+      groupName: data?['groupName'] ?? '',
+      groupCode: data?['groupCode'] ?? '',
+      members: List<String>.from(data?['members'] ?? []),
+    );
+  }
+}
+
+class Message {
+  final String senderId;
+  final String senderName; // Added sender's name
+  final String text;
+
+  Message({
+    required this.senderId,
+    required this.senderName,
+    required this.text,
+  });
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'senderId': senderId,
+      'senderName': senderName,
+      'text': text,
+    };
+  }
+
+  factory Message.fromFirestore(Map<String, dynamic> data) {
+    return Message(
+      senderId: data['senderId'] ?? '',
+      senderName: data['senderName'] ?? 'Unknown', // Default to 'Unknown'
+      text: data['text'] ?? '',
     );
   }
 }
@@ -443,7 +725,7 @@ class MyApp extends StatelessWidget {
             appBarTheme: AppBarTheme(
               foregroundColor: textColor,
             )),
-        home: SplashScreen(),
+        home: HomePage(),
       ),
     );
   }
@@ -1355,7 +1637,7 @@ class _HomePageState extends State<HomePage> {
               child: TextButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  context.read<HomeState>().toggleIsSomething();
+                  // context.read<HomeState>().toggleIsSomething();
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -1445,32 +1727,15 @@ class _HomePageState extends State<HomePage> {
     const SettingsScreen(),
   ];
 
-  void _onPlusPressed() {
-    switch (_selectedIndex) {
-      case 0: // Home
-        _showGroupDialog();
-        break;
-      case 1: // Notes
-        break;
-      case 3: // Flashcards
-        break;
-      default:
-        // unexisting index
-        return;
-    }
-  }
-
   void _onItemTapped(int index) {
-    if (index == 2) {
-      _onPlusPressed();
-    } else if (index == 4) {
+    if (index == 3) {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => SettingsScreen()),
       );
     } else {
       setState(() {
-        _selectedIndex = index < 2 ? index : index - 1;
+        _selectedIndex = index;
       });
     }
   }
@@ -1484,7 +1749,7 @@ class _HomePageState extends State<HomePage> {
         iconSize: 35,
         backgroundColor: secondaryColor,
         selectedItemColor: textColor,
-        currentIndex: _selectedIndex < 2 ? _selectedIndex : _selectedIndex + 1,
+        currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
         items: const [
@@ -1501,14 +1766,6 @@ class _HomePageState extends State<HomePage> {
               color: textColor,
             ),
             label: 'Notes',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.add_circle_outline,
-              size: 50,
-              color: textColor,
-            ),
-            label: 'Add',
           ),
           BottomNavigationBarItem(
             icon: Icon(
@@ -1541,7 +1798,10 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    bool inGroup = context.watch<HomeState>().inGroup;
+    final homeState = context.watch<HomeState>();
+    final groupState = context.watch<GroupState>();
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -1556,7 +1816,245 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
       body: Center(
-        child: inGroup ? Text('In Group') : Text('Not In Group'),
+        child: homeState.inGroup
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('In Group: ${groupState.groupName}'),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () {
+                      // Navigate to the group chat page.
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ChatPage(
+                            classGroupName: groupState.groupName ??
+                                "Group", //use group name from groupState
+                            classGroupCode: groupState.groupCode ??
+                                "", //use group code from groupState
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Go to Group Chat'),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () async {
+                      // Leave the group.
+                      if (homeState.currentGroupId != null) {
+                        try {
+                          // Remove the user from the 'members' array in Firestore
+                          await FirebaseFirestore.instance
+                              .collection('groups')
+                              .doc(homeState.currentGroupId)
+                              .update({
+                            'members': FieldValue.arrayRemove([user!.uid])
+                          });
+
+                          // Clear group data in GroupState
+                          groupState.clearGroup();
+                          homeState.setInGroup(false); // Update HomeState
+                        } catch (e) {
+                          logger.e('Error leaving group: $e');
+                          // Handle error (e.g., show a message to the user)
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Failed to leave group.')),
+                          );
+                        }
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red, // Style as a leave button
+                    ),
+                    child: const Text('Leave Group'),
+                  ),
+                ],
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('Not In a Group'),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () {
+                      // Show options to create or join a group.
+                      _showCreateOrJoinDialog(context);
+                    },
+                    child: const Text('Create / Join Group'),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  void _showCreateOrJoinDialog(BuildContext context) {
+    final _groupNameController = TextEditingController();
+    final _groupCodeController = TextEditingController();
+    final user = FirebaseAuth.instance.currentUser;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create or Join Group'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _groupNameController,
+              decoration: const InputDecoration(labelText: 'Group Name'),
+            ),
+            TextField(
+              controller: _groupCodeController,
+              decoration: const InputDecoration(labelText: 'Group Code'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final groupName = _groupNameController.text.trim();
+              final groupCode = _groupCodeController.text.trim();
+              if (groupName.isNotEmpty && groupCode.isNotEmpty) {
+                //create a group
+                try {
+                  // Create a new group document in the 'groups' collection.
+                  final groupRef = await FirebaseFirestore.instance
+                      .collection('groups')
+                      .add({
+                    'ownerId': user!.uid,
+                    'groupName': groupName,
+                    'groupCode': groupCode,
+                    'members': [
+                      user.uid
+                    ], // Add the creator to the members list.
+                  });
+
+                  // Get the ID of the newly created group
+                  final groupId = groupRef.id;
+
+                  //update groupID in groupState
+                  Provider.of<GroupState>(context, listen: false)
+                      .setGroupId(groupId);
+
+                  // Set the group data in GroupState.
+                  Provider.of<GroupState>(context, listen: false).setGroup(
+                    Group(
+                      groupId: groupId,
+                      ownerId: user.uid,
+                      groupName: groupName,
+                      groupCode: groupCode,
+                      members: [user.uid],
+                    ),
+                  );
+
+                  Provider.of<HomeState>(context, listen: false).setInGroup(
+                      true,
+                      groupId:
+                          groupId); //set the user to in a group and pass groupId
+
+                  Navigator.of(context).pop(); // Close the dialog.
+
+                  // Navigate to the chat page.
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ChatPage(
+                        classGroupName: groupName,
+                        classGroupCode: groupCode,
+                      ),
+                    ),
+                  );
+                } catch (e) {
+                  logger.e('Error creating group: $e');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to create group.')),
+                  );
+                }
+              } else if (groupCode.isNotEmpty) {
+                // Join an existing group using the group code.
+                try {
+                  // Query the 'groups' collection for a group with the given code.
+                  final groupSnapshot = await FirebaseFirestore.instance
+                      .collection('groups')
+                      .where('groupCode', isEqualTo: groupCode)
+                      .get();
+
+                  if (groupSnapshot.docs.isNotEmpty) {
+                    // A group with the code exists.
+                    final groupDoc = groupSnapshot.docs.first;
+                    final groupData = groupDoc.data();
+                    final groupId = groupDoc.id;
+
+                    // Check if the user is already a member
+                    List<String> members =
+                        List<String>.from(groupData['members'] ?? []);
+                    if (members.contains(user!.uid)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('You are already in this group.')),
+                      );
+                      return; // Don't proceed if already in the group
+                    }
+
+                    // Add the user to the group's members list.
+                    members.add(user.uid);
+                    await FirebaseFirestore.instance
+                        .collection('groups')
+                        .doc(groupId)
+                        .update({'members': members});
+
+                    // Set the group data in GroupState.
+                    Provider.of<GroupState>(context, listen: false).setGroup(
+                      Group(
+                        groupId: groupId,
+                        ownerId: groupData['ownerId'],
+                        groupName: groupData['groupName'],
+                        groupCode: groupData['groupCode'],
+                        members: members,
+                      ),
+                    );
+                    Provider.of<HomeState>(context, listen: false).setInGroup(
+                        true,
+                        groupId: groupId); //set user to in group
+
+                    Navigator.of(context).pop(); // Close the dialog.
+
+                    // Navigate to the chat page.
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChatPage(
+                          classGroupName: groupData['groupName'],
+                          classGroupCode: groupData['groupCode'],
+                        ),
+                      ),
+                    );
+                  } else {
+                    // No group with the given code exists.
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Invalid Group Code.')),
+                    );
+                  }
+                } catch (e) {
+                  logger.e('Error joining group: $e');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to join group.')),
+                  );
+                }
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Please enter both Group Name and Code.')),
+                );
+              }
+            },
+            child: const Text('OK'),
+          ),
+        ],
       ),
     );
   }
@@ -1572,22 +2070,22 @@ class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _NotesScreenState createState() => _NotesScreenState();
 }
 
 class _NotesScreenState extends State<NotesScreen> {
-  // replace with your real data fetch
-  // final List<Note> _notes = [
-  //   Note(id: '1', title: 'Math Summary', content: 'Here are some formulas...'),
-  //   Note(id: '2', title: 'Chemistry', content: 'Atomic structure and...'),
-  //   Note(id: '3', title: 'History', content: 'World War II timeline...'),
-  // ];
+  final TextEditingController _searchController = TextEditingController();
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     // Make a copy and sort so pinned are first
-    final notes = List<Note>.from(context.watch<NoteState>().notes)
+    final notes = Provider.of<NoteState>(context).notes;
+    final sortedNotes = List<Note>.from(notes)
       ..sort((a, b) {
         if (a.pinned == b.pinned) return 0;
         return a.pinned ? -1 : 1;
@@ -1610,6 +2108,12 @@ class _NotesScreenState extends State<NotesScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                //  Implement search functionality.
+                // You'll likely want to update the displayed list based on the search term
+                setState(() {}); // Trigger a rebuild to update the list
+              },
               decoration: InputDecoration(
                 filled: true,
                 fillColor: elementColor,
@@ -1617,8 +2121,8 @@ class _NotesScreenState extends State<NotesScreen> {
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide.none,
                 ),
-                hintText: 'search for notes',
-                hintStyle: TextStyle(
+                hintText: 'Search for notes',
+                hintStyle: const TextStyle(
                   color: textColor,
                 ),
                 suffixIcon: const Icon(
@@ -1631,30 +2135,41 @@ class _NotesScreenState extends State<NotesScreen> {
         ),
       ),
       body: ListView.builder(
-        itemCount: notes.length,
+        itemCount: sortedNotes.length,
         itemBuilder: (context, index) {
-          final note = notes[index];
+          final note = sortedNotes[index];
+          //search implementation
+          if (_searchController.text.isNotEmpty &&
+              !note.title.toLowerCase().contains(
+                    _searchController.text.toLowerCase(),
+                  ) &&
+              !note.content.toLowerCase().contains(
+                    _searchController.text.toLowerCase(),
+                  )) {
+            return const SizedBox
+                .shrink(); // Return an empty widget if it doesn't match
+          }
           final preview = note.content.length > 50
               ? '${note.content.substring(0, 50)}…'
               : note.content;
 
           return Card(
             color: elementColor,
-            margin: EdgeInsets.all(8.0), // Margin around the Card
+            margin: const EdgeInsets.all(8.0), // Margin around the Card
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12.0), // Rounded corners
             ),
             child: ListTile(
               title: Text(
                 note.title,
-                style: TextStyle(
+                style: const TextStyle(
                   color: textColor,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               subtitle: Text(
                 preview,
-                style: TextStyle(
+                style: const TextStyle(
                   color: textColor,
                 ),
               ),
@@ -1667,10 +2182,8 @@ class _NotesScreenState extends State<NotesScreen> {
                       color: note.pinned ? Colors.red : textColor,
                     ),
                     onPressed: () {
-                      setState(() {
-                        note.pinned = !note.pinned;
-                        // TODO: persist pin state back to Firestore
-                      });
+                      Provider.of<NoteState>(context, listen: false)
+                          .pinNote(note.id, !note.pinned);
                     },
                   ),
                   IconButton(
@@ -1692,26 +2205,61 @@ class _NotesScreenState extends State<NotesScreen> {
           );
         },
       ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: secondaryColor,
+        onPressed: () {
+          // Navigate to NoteEditPage for creating a new note.  Pass in a new Note with an empty ID.
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => NoteEditPage(
+                note: Note(id: '', title: '', content: ''),
+              ),
+            ),
+          );
+        },
+        child: const Icon(Icons.add_circle_outline, size: 45, color: textColor),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }
 
-class NoteEditPage extends StatelessWidget {
+class NoteEditPage extends StatefulWidget {
   final Note note;
   const NoteEditPage({super.key, required this.note});
 
   @override
-  Widget build(BuildContext context) {
-    final titleController = TextEditingController(text: note.title);
-    final contentController = TextEditingController(text: note.content);
+  _NoteEditPageState createState() => _NoteEditPageState();
+}
 
+class _NoteEditPageState extends State<NoteEditPage> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _contentController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController.text = widget.note.title;
+    _contentController.text = widget.note.content;
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: secondaryColor,
         centerTitle: true,
-        title: const Text(
-          'Edit Note',
-          style: TextStyle(
+        title: Text(
+          widget.note.id.isEmpty ? 'New Note' : 'Edit Note',
+          style: const TextStyle(
             fontWeight: FontWeight.w500,
             fontSize: 26,
           ),
@@ -1719,47 +2267,79 @@ class NoteEditPage extends StatelessWidget {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            // saveNote(); // TODO
             Navigator.of(context).pop();
           },
         ),
         actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.delete,
-              color: textColor,
+          if (widget
+              .note.id.isNotEmpty) // Only show delete if it's an existing note
+            IconButton(
+              icon: const Icon(
+                Icons.delete,
+                color: textColor,
+              ),
+              onPressed: () {
+                // Show a confirmation dialog before deleting
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Delete Note'),
+                    content: const Text(
+                        'Are you sure you want to delete this note?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Provider.of<NoteState>(context, listen: false)
+                              .deleteNote(widget.note.id);
+                          Navigator.of(context).pop(); // Close the dialog
+                          Navigator.of(context).pop(); // Go back to the list
+                        },
+                        child: const Text('Delete',
+                            style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
-            onPressed: () {
-              // TODO: delete note
-              Navigator.of(context).pop();
-            },
-          ),
         ],
         bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(60),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Flexible(
-                    flex: 2,
-                    child: Text(
-                      "Note Title",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
+          preferredSize: const Size.fromHeight(60),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Flexible(
+                  flex: 2,
+                  child: Text(
+                    "Note Title",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
                     ),
                   ),
-                  SizedBox(
-                    width: 10,
-                  ),
-                  Flexible(
-                    flex: 5,
+                ),
+                const SizedBox(
+                  width: 10,
+                ),
+                Flexible(
+                  flex: 5,
+                  child: Form(
+                    key: _formKey,
                     child: TextFormField(
-                      controller: titleController,
-                      style: TextStyle(
+                      controller: _titleController,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter a title';
+                        }
+                        return null;
+                      },
+                      style: const TextStyle(
                         fontWeight: FontWeight.w400,
                         fontSize: 14,
                       ),
@@ -1775,9 +2355,11 @@ class NoteEditPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                ],
-              ),
-            )),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(8),
@@ -1785,16 +2367,38 @@ class NoteEditPage extends StatelessWidget {
           child: TextFormField(
             textAlign: TextAlign.start,
             textAlignVertical: TextAlignVertical.top,
-            controller: contentController,
+            controller: _contentController,
             maxLines: null,
             expands: true,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               border: OutlineInputBorder(
                 borderSide: BorderSide.none,
               ),
             ),
           ),
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: secondaryColor,
+        onPressed: () {
+          if (_formKey.currentState!.validate()) {
+            final note = Note(
+              id: widget.note.id, // Keep the original ID if editing
+              title: _titleController.text,
+              content: _contentController.text,
+              pinned: widget.note.pinned,
+            );
+            if (widget.note.id.isEmpty) {
+              // Add new note
+              Provider.of<NoteState>(context, listen: false).addNote(note);
+            } else {
+              // Update existing note
+              Provider.of<NoteState>(context, listen: false).updateNote(note);
+            }
+            Navigator.of(context).pop(); // Go back to the list
+          }
+        },
+        child: const Icon(Icons.save, color: textColor),
       ),
     );
   }
@@ -1811,17 +2415,22 @@ class FlashcardsScreen extends StatefulWidget {
   const FlashcardsScreen({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _FlashcardsScreenState createState() => _FlashcardsScreenState();
 }
 
 class _FlashcardsScreenState extends State<FlashcardsScreen> {
-  // replace with your real data fetch
+  final TextEditingController _searchController = TextEditingController();
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     // Copy and sort so pinned first
-    final cards = List<Flashcard>.from(context.watch<FlashcardState>().cards)
+    final cards = Provider.of<FlashcardState>(context).cards;
+    final sortedCards = List<Flashcard>.from(cards)
       ..sort((a, b) {
         if (a.pinned == b.pinned) return 0;
         return a.pinned ? -1 : 1;
@@ -1844,6 +2453,10 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {});
+              },
               decoration: InputDecoration(
                 filled: true,
                 fillColor: elementColor,
@@ -1851,7 +2464,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide.none,
                 ),
-                hintText: 'search for flashcards',
+                hintText: 'Search for flashcards',
                 hintStyle: TextStyle(
                   color: textColor,
                 ),
@@ -1867,7 +2480,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
       body: Padding(
         padding: const EdgeInsets.all(8),
         child: GridView.builder(
-          itemCount: cards.length,
+          itemCount: sortedCards.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
             crossAxisSpacing: 8,
@@ -1875,7 +2488,18 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
             childAspectRatio: 3 / 4,
           ),
           itemBuilder: (context, index) {
-            final card = cards[index];
+            final card = sortedCards[index];
+            //search implementation
+            if (_searchController.text.isNotEmpty &&
+                !card.title.toLowerCase().contains(
+                      _searchController.text.toLowerCase(),
+                    ) &&
+                !card.content.toLowerCase().contains(
+                      _searchController.text.toLowerCase(),
+                    )) {
+              return const SizedBox
+                  .shrink(); // Return an empty widget if it doesn't match
+            }
             return Card(
               color: elementColor,
               elevation: 2,
@@ -1923,10 +2547,9 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                               color: card.pinned ? Colors.red : textColor,
                             ),
                             onPressed: () {
-                              setState(() {
-                                card.pinned = !card.pinned;
-                                // TODO: persist pin state back to Firestore
-                              });
+                              Provider.of<FlashcardState>(context,
+                                      listen: false)
+                                  .pinCard(card.id, !card.pinned);
                             },
                           ),
                           IconButton(
@@ -1952,26 +2575,62 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
           },
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: secondaryColor,
+        onPressed: () {
+          // Navigate to FlashcardEditPage for creating a new flashcard.  Pass in a new Flashcard with an empty ID.
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => FlashcardEditPage(
+                card: Flashcard(id: '', title: '', content: ''),
+              ),
+            ),
+          );
+        },
+        child: const Icon(Icons.add_circle_outline, size: 45, color: textColor),
+      ),
+      floatingActionButtonLocation:
+          FloatingActionButtonLocation.centerFloat, //changed to centerFloat
     );
   }
 }
 
-class FlashcardEditPage extends StatelessWidget {
+class FlashcardEditPage extends StatefulWidget {
   final Flashcard card;
   const FlashcardEditPage({super.key, required this.card});
 
   @override
-  Widget build(BuildContext context) {
-    final titleController = TextEditingController(text: card.title);
-    final contentController = TextEditingController(text: card.content);
+  _FlashcardEditPageState createState() => _FlashcardEditPageState();
+}
 
+class _FlashcardEditPageState extends State<FlashcardEditPage> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _contentController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController.text = widget.card.title;
+    _contentController.text = widget.card.content;
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: secondaryColor,
         centerTitle: true,
-        title: const Text(
-          'Edit Flashcard',
-          style: TextStyle(
+        title: Text(
+          widget.card.id.isEmpty ? 'New Flashcard' : 'Edit Flashcard',
+          style: const TextStyle(
             fontWeight: FontWeight.w500,
             fontSize: 26,
           ),
@@ -1979,47 +2638,79 @@ class FlashcardEditPage extends StatelessWidget {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            // saveNote(); // TODO
             Navigator.of(context).pop();
           },
         ),
         actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.delete,
-              color: textColor,
+          if (widget.card.id
+              .isNotEmpty) // Only show delete if it's an existing flashcard
+            IconButton(
+              icon: const Icon(
+                Icons.delete,
+                color: textColor,
+              ),
+              onPressed: () {
+                // Show a confirmation dialog before deleting
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Delete Flashcard'),
+                    content: const Text(
+                        'Are you sure you want to delete this flashcard?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Provider.of<FlashcardState>(context, listen: false)
+                              .deleteCard(widget.card);
+                          Navigator.of(context).pop(); // Close the dialog
+                          Navigator.of(context).pop(); // Go back to the list
+                        },
+                        child: const Text('Delete',
+                            style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
-            onPressed: () {
-              // TODO: delete note
-              Navigator.of(context).pop();
-            },
-          ),
         ],
         bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(60),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Flexible(
-                    flex: 2,
-                    child: Text(
-                      "Flashcard Title",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
+          preferredSize: const Size.fromHeight(60),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Flexible(
+                  flex: 2,
+                  child: Text(
+                    "Flashcard Title",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
                     ),
                   ),
-                  SizedBox(
-                    width: 10,
-                  ),
-                  Flexible(
-                    flex: 5,
+                ),
+                const SizedBox(
+                  width: 10,
+                ),
+                Flexible(
+                  flex: 5,
+                  child: Form(
+                    key: _formKey,
                     child: TextFormField(
-                      controller: titleController,
-                      style: TextStyle(
+                      controller: _titleController,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter a title';
+                        }
+                        return null;
+                      },
+                      style: const TextStyle(
                         fontWeight: FontWeight.w400,
                         fontSize: 14,
                       ),
@@ -2035,9 +2726,11 @@ class FlashcardEditPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                ],
-              ),
-            )),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(8),
@@ -2045,10 +2738,10 @@ class FlashcardEditPage extends StatelessWidget {
           child: TextFormField(
             textAlign: TextAlign.start,
             textAlignVertical: TextAlignVertical.top,
-            controller: contentController,
+            controller: _contentController,
             maxLines: null,
             expands: true,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               border: OutlineInputBorder(
                 borderSide: BorderSide.none,
               ),
@@ -2056,9 +2749,38 @@ class FlashcardEditPage extends StatelessWidget {
           ),
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: secondaryColor,
+        onPressed: () {
+          if (_formKey.currentState!.validate()) {
+            final flashcard = Flashcard(
+              id: widget.card.id, // Keep the original ID if editing
+              title: _titleController.text,
+              content: _contentController.text,
+              pinned: widget.card.pinned,
+            );
+            if (widget.card.id.isEmpty) {
+              // Add new flashcard
+              Provider.of<FlashcardState>(context, listen: false)
+                  .addCard(flashcard);
+            } else {
+              // Update existing flashcard
+              Provider.of<FlashcardState>(context, listen: false)
+                  .editCardTitle(widget.card.id, flashcard.title);
+              Provider.of<FlashcardState>(context, listen: false)
+                  .editCardContent(widget.card.id, flashcard.content);
+            }
+            Navigator.of(context).pop(); // Go back to the list
+          }
+        },
+        child: const Icon(Icons.save, color: textColor),
+      ),
+      floatingActionButtonLocation:
+          FloatingActionButtonLocation.centerFloat, //changed to centerFloat
     );
   }
 }
+
 //! -------------------------
 //! END OF FLASHCARDS SECTION
 //! -------------------------
@@ -2696,27 +3418,100 @@ class ChatPage extends StatefulWidget {
   });
 
   @override
-  // ignore: library_private_types_in_public_api
   _ChatPageState createState() => _ChatPageState();
 }
 
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   // final List<String> _messages = []; // replace with your data source
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    context.read<GroupState>().setName(widget.classGroupName);
-    context.read<GroupState>().setCode(widget.classGroupCode);
+    final groupState = context.read<GroupState>();
+    groupState.setName(widget.classGroupName);
+    groupState.setCode(widget.classGroupCode);
+
+    // Fetch initial messages from Firestore
+    _fetchMessages();
   }
 
-  void _sendMessage() {
+  //method to fetch messages
+  Future<void> _fetchMessages() async {
+    final groupState = context.read<GroupState>();
+    try {
+      //get the messages from firestore
+      final messagesSnapshot = await FirebaseFirestore.instance
+          .collection('groups')
+          .doc(groupState.groupId) // Use the group ID from GroupState
+          .collection('messages')
+          .orderBy('timestamp') //order by time
+          .get();
+
+      // Clear existing messages
+      groupState.messages.clear();
+
+      //add messages
+      for (final doc in messagesSnapshot.docs) {
+        final messageData = doc.data();
+        final message = Message.fromFirestore(messageData);
+        groupState.addMessage(message);
+      }
+    } catch (e) {
+      logger.e('Error fetching messages: $e');
+      //show error
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load messages')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    setState(() => context.read<GroupState>().sendMessage(text));
-    _controller.clear();
-    // TODO: figure the backend part later
+
+    final user = FirebaseAuth.instance.currentUser;
+    final groupState = context.read<GroupState>();
+
+    try {
+      // Add the message to Firestore, including sender's name.
+      final senderName =
+          user?.displayName ?? 'Unknown'; // Get sender's name or use "Unknown"
+      final message = Message(
+        senderId: user!.uid,
+        senderName: senderName,
+        text: text,
+      );
+      await FirebaseFirestore.instance
+          .collection('groups')
+          .doc(groupState.groupId) // Use the group ID from GroupState
+          .collection('messages')
+          .add(message.toFirestore());
+
+      //add message to group state
+      groupState.addMessage(message);
+
+      _controller.clear();
+      // Scroll to the bottom after sending the message.
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    } catch (e) {
+      logger.e('Error sending message: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to send message.')),
+      );
+    }
   }
 
   void _openGroupSettings() {
@@ -2727,6 +3522,7 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final groupState = context.watch<GroupState>();
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
@@ -2734,8 +3530,8 @@ class _ChatPageState extends State<ChatPage> {
         title: GestureDetector(
           onTap: _openGroupSettings,
           child: Text(
-            context.watch<GroupState>().groupName ?? 'Null String',
-            style: TextStyle(
+            groupState.groupName ?? 'Null String',
+            style: const TextStyle(
               fontWeight: FontWeight.w500,
               fontSize: 18,
             ),
@@ -2747,24 +3543,47 @@ class _ChatPageState extends State<ChatPage> {
           // Message list
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemCount: context.watch<GroupState>().messages.length,
-              itemBuilder: (context, i) => Align(
-                alignment:
-                    i.isEven ? Alignment.centerLeft : Alignment.centerRight,
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: i.isEven ? elementColor : secondaryColor,
-                    borderRadius: BorderRadius.circular(8),
+              itemCount: groupState.messages.length,
+              itemBuilder: (context, i) {
+                final message = groupState.messages[i];
+                final isCurrentUser =
+                    message.senderId == FirebaseAuth.instance.currentUser?.uid;
+                return Align(
+                  alignment: isCurrentUser
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isCurrentUser ? secondaryColor : elementColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: isCurrentUser
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          message.senderName, // Display sender's name
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                          // Set color for sender name
+                          textAlign:
+                              isCurrentUser ? TextAlign.right : TextAlign.left,
+                        ),
+                        Text(message.text),
+                      ],
+                    ),
                   ),
-                  child: Text(context.watch<GroupState>().messages[i]),
-                ),
-              ),
+                );
+              },
             ),
           ),
-
           // Input bar
           Container(
             color: elementColor,
