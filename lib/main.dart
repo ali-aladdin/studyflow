@@ -1,12 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'dart:math';
-
-import 'package:logger/logger.dart';
-
-import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'firebase_options.dart'; // from flutterfire configure
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter/material.dart';
+import 'package:logger/logger.dart';
+import 'firebase_options.dart';
+import 'dart:math';
 
 //! INDEXES to navigate more easily to certain code blocks
 final StatelessWidget mainPage = MyApp(key: UniqueKey());
@@ -22,10 +21,42 @@ final StatefulWidget groupChatPage = ChatPage(
 final StatefulWidget settingsPage = SettingsScreen(key: UniqueKey());
 //! END OF INDEXES
 
+//! GLOBAL VARS
 final logger = Logger(); //! To log better
+final DatabaseServices _databaseServices = DatabaseServices();
 
-//! Firebase instances
-final users = FirebaseFirestore.instance.collection('users');
+//? SECTION TO HELP WITH FIRESTORE
+
+const String USERS_COLLECTION_REF = "users";
+
+class DatabaseServices {
+  final _firestore = FirebaseFirestore.instance;
+
+  late final CollectionReference _usersRef;
+
+  DatabaseServices() {
+    // returns a schema associated reference
+    _usersRef = FirebaseFirestore.instance
+        .collection('users')
+        .withConverter<User>(
+            fromFirestore:
+                (DocumentSnapshot<Map<String, dynamic>> snapshot, _) =>
+                    User.fromMap(
+                      snapshot.data()!,
+                    ),
+            toFirestore: (User user, _) => user.toMap());
+  }
+
+  Stream<QuerySnapshot> getUsers() {
+    return _usersRef.snapshots();
+  }
+
+  void addUser(User user) async {
+    _usersRef.add(user);
+  }
+}
+
+//! END OF FIRESTORE HELPER SECTION
 
 //* PREFERED LAYOUTS AND DESIGNS
 /*
@@ -284,28 +315,20 @@ class FlashcardState extends ChangeNotifier {
 
 //? ------------------------------------------
 //? classes section that'll aid in development
-//* this will be deprecated later when we have
-//* an actual backend setup and ready
 //? ------------------------------------------
-class AppUser {
-  final String uid;
+class User {
   final String email;
   final String username;
-  final DateTime createdAt;
 
-  AppUser({
-    required this.uid,
+  User({
     required this.email,
     required this.username,
-    required this.createdAt,
   });
 
-  factory AppUser.fromMap(Map<String, dynamic> map, String documentId) {
-    return AppUser(
-      uid: documentId,
-      email: map['email'] ?? '',
-      username: map['username'] ?? '',
-      createdAt: (map['createdAt'] as Timestamp).toDate(),
+  factory User.fromMap(Map<String, dynamic> map) {
+    return User(
+      username: map['username'],
+      email: map['email'],
     );
   }
 
@@ -313,8 +336,18 @@ class AppUser {
     return {
       'email': email,
       'username': username,
-      'createdAt': createdAt,
     };
+  }
+
+  User copyWith({
+    String? uid,
+    String? email,
+    String? username,
+  }) {
+    return User(
+      email: email ?? this.email,
+      username: username ?? this.username,
+    );
   }
 }
 
@@ -410,7 +443,7 @@ class MyApp extends StatelessWidget {
             appBarTheme: AppBarTheme(
               foregroundColor: textColor,
             )),
-        home: SignUpPage(),
+        home: SplashScreen(),
       ),
     );
   }
@@ -489,7 +522,6 @@ class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _SignInPageState createState() => _SignInPageState();
 }
 
@@ -499,6 +531,83 @@ class _SignInPageState extends State<SignInPage> {
   final TextEditingController _passwordController = TextEditingController();
   bool _userPassword = true;
   bool _rememberMe = false;
+  String _usernameError = '';
+  String _passwordError = '';
+
+  Future<void> signInWithUsername(BuildContext context) async {
+    setState(() {
+      _usernameError = '';
+      _passwordError = '';
+    });
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    try {
+      final usersRef = FirebaseFirestore.instance.collection('users');
+      final querySnapshot = await usersRef
+          .where('username', isEqualTo: _usernameController.text)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        logger.i('Error: User not found');
+        setState(() {
+          _usernameError = 'Username not found.';
+        });
+        return;
+      }
+
+      final userData = querySnapshot.docs.first.data();
+      final email = userData['email'];
+      final uid = userData['uid']; // Get the uid here
+
+      // 2. Sign in with email and password using Firebase Authentication
+      try {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: _passwordController.text,
+        );
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'wrong-password') {
+          setState(() {
+            _passwordError = 'Invalid password.';
+          });
+          return;
+        } else {
+          setState(() {
+            _passwordError = 'Error signing in.'; // generic
+          });
+          logger.e("FirebaseAuthException: ${e.message}");
+          return; // Exit, so we don't proceed to the next step.
+        }
+      }
+
+      // 3.  Retrieve the user data, since we now have the uid
+      final userDoc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (userDoc.exists) {
+        logger.i('Signed in successfully!');
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => HomePage()),
+        );
+      } else {
+        logger.i('Error: User data not found in Firestore');
+        setState(() {
+          _usernameError =
+              'Error retrieving user data.'; // Or a more specific message.
+        });
+        return;
+      }
+    } catch (e) {
+      // Handle other errors (e.g., Firestore error)
+      logger.i('Error retrieving user data: $e');
+      setState(() {
+        _usernameError = 'An error occurred.';
+      });
+      return;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -521,26 +630,34 @@ class _SignInPageState extends State<SignInPage> {
                   const SizedBox(height: 24),
                   TextFormField(
                     controller: _usernameController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Username',
-                      labelStyle: TextStyle(
+                      labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
-                      prefixIcon: Icon(
+                      prefixIcon: const Icon(
                         Icons.person,
                         color: textColor,
                       ),
                       border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                        color: textColor,
-                      )),
+                        borderSide: BorderSide(
+                          color: _usernameError.isNotEmpty
+                              ? Colors.red
+                              : textColor,
+                        ),
+                      ),
                       focusedBorder: OutlineInputBorder(
                         borderSide: BorderSide(
                           width: 2.5,
-                          color: secondaryColor,
+                          color: _usernameError.isNotEmpty
+                              ? Colors.red
+                              : secondaryColor,
                         ),
                       ),
+                      errorText:
+                          _usernameError.isNotEmpty ? _usernameError : null,
+                      errorStyle: const TextStyle(height: 0),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -555,7 +672,7 @@ class _SignInPageState extends State<SignInPage> {
                     obscureText: _userPassword,
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      labelStyle: TextStyle(
+                      labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
@@ -564,13 +681,18 @@ class _SignInPageState extends State<SignInPage> {
                         color: textColor,
                       ),
                       border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                        color: textColor,
-                      )),
+                        borderSide: BorderSide(
+                          color: _passwordError.isNotEmpty
+                              ? Colors.red
+                              : textColor,
+                        ),
+                      ),
                       focusedBorder: OutlineInputBorder(
                         borderSide: BorderSide(
                           width: 2.5,
-                          color: secondaryColor,
+                          color: _passwordError.isNotEmpty
+                              ? Colors.red
+                              : secondaryColor,
                         ),
                       ),
                       suffixIcon: IconButton(
@@ -586,6 +708,9 @@ class _SignInPageState extends State<SignInPage> {
                           });
                         },
                       ),
+                      errorText:
+                          _passwordError.isNotEmpty ? _passwordError : null,
+                      errorStyle: const TextStyle(height: 0),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -640,20 +765,7 @@ class _SignInPageState extends State<SignInPage> {
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () {
-                      // TODO
-                      /*
-                      if (_formKey.currentState!.validate()) {
-                        // Handle sign up action
-                      }
-                      */
-
-                      //! delete later
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => HomePage()),
-                      );
-                    },
+                    onPressed: () => signInWithUsername(context),
                     style: ElevatedButton.styleFrom(
                       foregroundColor: primaryColor,
                       backgroundColor: secondaryColor,
@@ -703,6 +815,7 @@ class _SignInPageState extends State<SignInPage> {
     );
   }
 }
+
 //! -------------------
 //! END OF SIGN IN PAGE
 //! -------------------
@@ -714,75 +827,136 @@ class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _ForgotPasswordPageState createState() => _ForgotPasswordPageState();
 }
 
 class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final TextEditingController _emailController = TextEditingController();
-  final bool _isSending = false;
+  bool _isSending = false;
+  String _emailError = '';
 
-  //! FOR LATER USE
-  /*
-  Future<void> _sendResetEmail() async {
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your email address.')),
-      );
-      return;
-    }
-    setState(() => _isSending = true);
+  Future<void> sendResetPasswordEmail() async {
+    setState(() {
+      _isSending = true;
+      _emailError = '';
+    });
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reset link sent—check your email.')),
-      );
+      await FirebaseAuth.instance
+          .sendPasswordResetEmail(email: _emailController.text.trim());
+      // Show a success message to the user.  Consider using a dialog.
+      logger.i("Email Sent Successfully");
+      Navigator.pop(context); // Go back to the sign-in page
+    } on FirebaseAuthException catch (e) {
+      // Handle errors, such as invalid email or user not found
+      _emailError = 'Failed to send reset email.';
+      if (e.code == 'invalid-email') {
+        _emailError = 'Invalid email address.';
+      } else if (e.code == 'user-not-found') {
+        _emailError = 'No user found with this email.';
+      }
+      logger.i(_emailError);
+      logger.i('Error sending password reset email: ${e.message}');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
+      // Handle other errors
+      logger.i("An unexpected error has occurred.");
+      logger.i('Error sending password reset email: $e');
     } finally {
-      setState(() => _isSending = false);
+      setState(() {
+        _isSending = false;
+      });
     }
   }
-  */
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: primaryColor, // Set the background color
       appBar: AppBar(
-        title: const Text('Forgot Password'),
-        automaticallyImplyLeading: false,
+        backgroundColor: secondaryColor,
+        centerTitle: true,
+        title: const Text(
+          'Forgot Password',
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: 26,
+          ),
+        ),
+        automaticallyImplyLeading:
+            false, // Remove the default back button, we'll use a TextButton
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment:
+              CrossAxisAlignment.stretch, // Make children stretch
           children: [
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
+              style: const TextStyle(color: textColor), // Set text color
+              decoration: InputDecoration(
                 labelText: 'Email Address',
-                border: OutlineInputBorder(),
+                labelStyle: const TextStyle(color: textColor),
+                errorText:
+                    _emailError.isNotEmpty ? _emailError : null, // Label color
+                border: OutlineInputBorder(
+                  borderSide: const BorderSide(
+                      color: textColor), // Border color  <--- ADDED THIS LINE
+                  borderRadius: BorderRadius.circular(10.0),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: textColor.withOpacity(0.5)),
+                  borderRadius: BorderRadius.circular(10.0),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: textColor),
+                  borderRadius: BorderRadius.circular(10.0),
+                ),
               ),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => {},
+              onPressed: sendResetPasswordEmail,
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    darkerSecondaryColor, // Button color  <--- CHANGED THIS LINE
+                foregroundColor: textColor,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10.0),
+                ),
+              ),
               child: _isSending
                   ? const SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: secondaryColor, // Match the button's text color
+                      ),
                     )
-                  : const Text('Send Email'),
+                  : const Text(
+                      'Send Email',
+                      style: TextStyle(fontSize: 18),
+                    ),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Go Back to Sign In'),
+              style: TextButton.styleFrom(
+                foregroundColor: textColor, // Text color
+              ),
+              child: const Text(
+                'Go Back to Sign In',
+                style: TextStyle(fontSize: 16),
+              ),
             ),
           ],
         ),
@@ -790,6 +964,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     );
   }
 }
+
 //! ---------------------------
 //! END OF FORGOT PASSWORD PAGE
 //! ---------------------------
@@ -811,19 +986,82 @@ class _SignUpPageState extends State<SignUpPage> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _userPassword = true;
+  String _emailError = '';
+  String _usernameError = '';
+  String _passwordError = '';
 
-  Future<void> handleSignUp() async {
-    // try {
-    //   final users = FirebaseFirestore.instance.collection('users');
-    //   final query = await users
-    //       .where('username', isEqualTo: _usernameController.text)
-    //       .get();
-    //   if (query.docs.isEmpty) {
-    //     logger.i("No similar username");
-    //   }
-    // } catch (e, stackTrace) {
-    //   logger.e("Firestore error: $e and $stackTrace");
-    // }
+  void resetControllers() {
+    _emailController.text = '';
+    _usernameController.text = '';
+    _passwordController.text = '';
+  }
+
+  Future<void> signUpWithEmailUsernameAndPassword(BuildContext context) async {
+    setState(() {
+      _emailError = '';
+      _usernameError = '';
+      _passwordError = '';
+    });
+    try {
+      if (_formKey.currentState!.validate()) {
+        // 1. Create user with email and password using Firebase Authentication
+        final userCredential =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+
+        // 2. Get the user's UID
+        final uid = userCredential.user!.uid;
+
+        // 3. Store additional user data in Firestore
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'email': _emailController.text,
+          'username': _usernameController.text,
+          'uid': uid, // Store the UID for easy access later
+        });
+        logger.i('Signed up successfully!');
+        resetControllers();
+        //pop to signin
+        Navigator.of(context).pop();
+      }
+    } on FirebaseAuthException catch (e) {
+      // Handle Firebase Auth errors (e.g., email already in use)
+      logger.i('Error signing up: ${e.message}');
+      if (e.code == 'email-already-in-use') {
+        setState(() {
+          _emailError = 'Email address is already in use.';
+        });
+      } else if (e.code == 'invalid-email') {
+        setState(() {
+          _emailError = 'Invalid email address.';
+        });
+      } else if (e.code == 'weak-password') {
+        setState(() {
+          _passwordError = 'Password is too weak.';
+        });
+      } else {
+        setState(() {
+          _emailError = 'Error signing up.';
+        });
+      }
+      resetControllers(); // Important: rethrow the error to be handled by the caller
+    } catch (e) {
+      // Handle other errors (e.g., Firestore error)
+      logger.i('Error creating user in Firestore: $e');
+      setState(() {
+        _emailError = 'Error creating user.';
+      });
+      resetControllers();
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -840,7 +1078,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Image.asset(
-                    'assets/signuplogoandtext.png',
+                    'assets/signuplogoandtext.png', // Make sure this path is correct
                     width: 190,
                     height: 190,
                   ),
@@ -848,27 +1086,35 @@ class _SignUpPageState extends State<SignUpPage> {
                   // Email Input Field
                   TextFormField(
                     controller: _emailController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Email Address',
-                      labelStyle: TextStyle(
+                      labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
-                      prefixIcon: Icon(
+                      prefixIcon: const Icon(
                         Icons.email,
                         color: textColor,
                       ),
                       border: OutlineInputBorder(
                         borderSide: BorderSide(
-                          color: textColor,
+                          color: _emailError.isNotEmpty
+                              ? Colors.red
+                              : textColor, // Change border color on error
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderSide: BorderSide(
                           width: 2.5,
-                          color: secondaryColor,
+                          color: _emailError.isNotEmpty
+                              ? Colors.red
+                              : secondaryColor, // Change border color on error
                         ),
                       ),
+                      errorText: _emailError.isNotEmpty
+                          ? _emailError
+                          : null, // Show Error
+                      errorStyle: const TextStyle(height: 0),
                     ),
                     keyboardType: TextInputType.emailAddress,
                     validator: (value) {
@@ -882,27 +1128,35 @@ class _SignUpPageState extends State<SignUpPage> {
                   // Username Input Field
                   TextFormField(
                     controller: _usernameController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Username',
-                      labelStyle: TextStyle(
+                      labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: textColor,
                       ),
-                      prefixIcon: Icon(
+                      prefixIcon: const Icon(
                         Icons.person,
                         color: textColor,
                       ),
                       border: OutlineInputBorder(
                         borderSide: BorderSide(
-                          color: textColor,
+                          color: _usernameError.isNotEmpty
+                              ? Colors.red
+                              : textColor, // Change border color on error
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderSide: BorderSide(
                           width: 2.5,
-                          color: secondaryColor,
+                          color: _usernameError.isNotEmpty
+                              ? Colors.red
+                              : secondaryColor, // Change border color on error
                         ),
                       ),
+                      errorText: _usernameError.isNotEmpty
+                          ? _usernameError
+                          : null, // Show Error
+                      errorStyle: const TextStyle(height: 0),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -926,15 +1180,19 @@ class _SignUpPageState extends State<SignUpPage> {
                         Icons.lock,
                         color: textColor,
                       ),
-                      border: const OutlineInputBorder(
+                      border: OutlineInputBorder(
                         borderSide: BorderSide(
-                          color: textColor,
+                          color: _passwordError.isNotEmpty
+                              ? Colors.red
+                              : textColor, // Change border color on error
                         ),
                       ),
-                      focusedBorder: const OutlineInputBorder(
+                      focusedBorder: OutlineInputBorder(
                         borderSide: BorderSide(
                           width: 2.5,
-                          color: secondaryColor,
+                          color: _passwordError.isNotEmpty
+                              ? Colors.red
+                              : secondaryColor, // Change border color on error
                         ),
                       ),
                       suffixIcon: IconButton(
@@ -950,6 +1208,10 @@ class _SignUpPageState extends State<SignUpPage> {
                           });
                         },
                       ),
+                      errorText: _passwordError.isNotEmpty
+                          ? _passwordError
+                          : null, // Show Error
+                      errorStyle: const TextStyle(height: 0),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -961,7 +1223,8 @@ class _SignUpPageState extends State<SignUpPage> {
                   const SizedBox(height: 16),
                   // Sign Up Button
                   ElevatedButton(
-                    onPressed: handleSignUp,
+                    onPressed: () =>
+                        signUpWithEmailUsernameAndPassword(context),
                     style: ElevatedButton.styleFrom(
                       foregroundColor: primaryColor,
                       backgroundColor: secondaryColor,
@@ -1012,6 +1275,7 @@ class _SignUpPageState extends State<SignUpPage> {
     );
   }
 }
+
 //! -------------------
 //! END OF SIGN UP PAGE
 //! -------------------
