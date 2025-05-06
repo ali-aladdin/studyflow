@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 import 'package:logger/logger.dart';
@@ -17,7 +21,8 @@ final StatelessWidget homeScreenPage = HomeScreen(key: UniqueKey());
 final StatefulWidget notesPage = NotesScreen(key: UniqueKey());
 final StatefulWidget flashcardsPage = FlashcardsScreen(key: UniqueKey());
 final StatefulWidget groupChatPage = ChatPage(
-    classGroupName: "nothing", classGroupCode: "nothing", key: UniqueKey());
+  groupId: "232412232",
+);
 final StatefulWidget settingsPage = SettingsScreen(key: UniqueKey());
 //! END OF INDEXES
 
@@ -193,85 +198,506 @@ const Color warningErrorColor = Color.fromARGB(255, 240, 42, 42);
  */
 class HomeState extends ChangeNotifier {
   bool _inGroup = false;
-  String? _currentGroupId; // To store the current group ID
 
   bool get inGroup => _inGroup;
-  String? get currentGroupId => _currentGroupId;
 
-  void setInGroup(bool value, {String? groupId}) {
-    _inGroup = value;
-    _currentGroupId = groupId; // Update the group ID
+  void toggleIsSomething() {
+    _inGroup = !_inGroup;
     notifyListeners();
   }
 }
 
 class GroupState extends ChangeNotifier {
-  String? _groupId; // Add this
-  String? _groupName;
-  String? _groupCode;
-  final List<Message> _messages = []; // Use the Message class instead of String
-  List<String> _members = [];
-  String? _ownerId;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  User? _currentUser = FirebaseAuth.instance.currentUser as User?;
 
-  String? get groupId => _groupId; //add this
-  String? get groupName => _groupName;
-  String? get groupCode => _groupCode;
+  // NEW FIELD: _activeGroupId
+  // Stores the ID of the group the user is currently viewing.
+  String? _activeGroupId;
+
+  // NEW FIELD: _currentGroup
+  // Stores the data for the currently active group fetched from Firestore.
+  Group? _currentGroup;
+
+  // NEW FIELD: _messages
+  // List of message objects fetched from Firestore stream.
+  final List<Message> _messages = [];
+
+  // NEW FIELDS: StreamSubscriptions
+  // Manage active listeners to Firestore streams.
+  StreamSubscription? _messagesSubscription;
+  StreamSubscription? _groupSubscription;
+
+  // NEW FIELD: _userUsernameCache
+  // Cache for UID -> Username mapping to avoid repeated Firestore reads.
+  final Map<String, String> _userUsernameCache = {};
+
+  // --- Getters (Updated to reflect Firestore data) ---
+
+  // NEW GETTER: isInGroup
+  // Checks if an active group ID is set.
+  bool get isInGroup => _activeGroupId != null;
+
+  // NEW GETTER: activeGroupId
+  // Returns the ID of the current group.
+  String? get activeGroupId => _activeGroupId;
+
+  // NEW GETTER: currentGroup
+  // Returns the current Group object.
+  Group? get currentGroup => _currentGroup;
+
+  // NEW GETTER: messages
+  // Returns the list of streamed messages.
   List<Message> get messages => _messages;
-  List<String> get members => _members;
-  String? get ownerId => _ownerId;
 
-  void setGroup(Group group) {
-    _groupId = group.groupId;
-    _groupName = group.groupName;
-    _groupCode = group.groupCode;
-    _members = group.members;
-    notifyListeners();
+  // NEW GETTER: memberUids
+  // Returns the list of member UIDs from the current group.
+  List<String> get memberUids => _currentGroup?.members ?? [];
+
+  // NEW GETTER: groupName
+  // Returns the name of the current group.
+  String? get groupName => _currentGroup?.groupName;
+
+  // NEW GETTER: groupCode
+  // Returns the code of the current group.
+  String? get groupCode => _currentGroup?.groupCode;
+
+  // NEW GETTER: groupOwnerId
+  // Returns the UID of the group owner.
+  String? get groupOwnerId => _currentGroup?.ownerId;
+
+  // NEW GETTER: currentUserId
+  // Returns the UID of the currently logged-in user.
+  String? get currentUserId => _currentUser?.uid;
+
+  // NEW METHOD: getUsername
+  // Looks up and returns the username for a given UID from the cache.
+  String getUsername(String uid) {
+    return _userUsernameCache[uid] ??
+        'Loading...'; // Return cached username or placeholder
   }
 
-  void setOwnerId(String ownerId) {
-    _ownerId = ownerId;
-    notifyListeners();
+  // --- State Management & Firestore Streams ---
+
+  // NEW METHOD: initGroup
+  // Starts listening to Firestore streams for messages and group data for the given group ID.
+  void initGroup(String groupId) {
+    if (_activeGroupId == groupId) return; // Already in this group
+
+    _activeGroupId = groupId;
+    _messages.clear(); // Clear old messages
+    _currentGroup = null; // Clear old group data
+    _userUsernameCache.clear(); // Clear old username cache
+
+    // Start streaming group details (name, code, members, owner)
+    _groupSubscription =
+        _firestore.collection('groups').doc(_activeGroupId).snapshots().listen(
+      (snapshot) async {
+        if (snapshot.exists) {
+          _currentGroup = Group.fromFirestore(snapshot);
+          // Collect UIDs from members and owner
+          Set<String> uidsToFetch = Set.from(_currentGroup!.members);
+          uidsToFetch.add(_currentGroup!.ownerId);
+
+          // Fetch usernames for these UIDs
+          await _fetchUsernamesForUids(uidsToFetch.toList());
+          notifyListeners();
+        } else {
+          // Group likely deleted externally, handle leaving
+          if (kDebugMode) print("Group does not exist. Leaving group.");
+          leaveGroup(); // Use the internal leave method
+        }
+      },
+      onError: (error) {
+        if (kDebugMode) print("Error streaming group data: $error");
+        // Handle errors (e.g., show a message to the user)
+        leaveGroup(); // Leave group on error
+      },
+    );
+
+    // Start streaming messages
+    _messagesSubscription = _firestore
+        .collection('groups')
+        .doc(_activeGroupId)
+        .collection('messages')
+        .orderBy('timestamp', descending: true) // Order by time
+        .snapshots()
+        .listen(
+      (snapshot) async {
+        _messages.clear(); // Clear list before adding new data
+        List<String> senderUidsToFetch = [];
+        for (var doc in snapshot.docs) {
+          Message msg = Message.fromFirestore(doc);
+          _messages.add(msg);
+          // Collect sender UIDs to fetch usernames if not already cached
+          if (!_userUsernameCache.containsKey(msg.senderId)) {
+            senderUidsToFetch.add(msg.senderId);
+          }
+        }
+
+        // Fetch usernames for any new senders
+        if (senderUidsToFetch.isNotEmpty) {
+          await _fetchUsernamesForUids(senderUidsToFetch);
+        }
+
+        // Sort messages to show newest at the bottom after fetching usernames
+        _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        notifyListeners();
+      },
+      onError: (error) {
+        if (kDebugMode) print("Error streaming messages: $error");
+        // Handle errors
+        leaveGroup(); // Leave group on error
+      },
+    );
+
+    notifyListeners(); // Notify that group initialization is starting
   }
 
-  void setGroupId(String groupId) {
-    _groupId = groupId;
-    notifyListeners();
+  // NEW METHOD: _fetchUsernamesForUids
+  // Fetches usernames from the 'users' collection for a list of UIDs.
+  Future<void> _fetchUsernamesForUids(List<String> uids) async {
+    if (uids.isEmpty) return;
+
+    // Remove duplicates and filter out UIDs we already have cached
+    Set<String> uniqueUidsToFetch = uids
+        .where((uid) => uid.isNotEmpty && !_userUsernameCache.containsKey(uid))
+        .toSet();
+
+    if (uniqueUidsToFetch.isEmpty) return;
+
+    try {
+      // Batch queries if more than 10 UIDs (Firestore limit for 'whereIn')
+      List<String> uidBatch = uniqueUidsToFetch.toList();
+      while (uidBatch.isNotEmpty) {
+        List<String> currentBatch = uidBatch.take(10).toList();
+        uidBatch = uidBatch.skip(10).toList();
+
+        // Query the 'users' collection by the 'uid' FIELD
+        QuerySnapshot userSnapshot = await _firestore
+            .collection('users')
+            .where('uid',
+                whereIn:
+                    currentBatch) // Assuming 'users' docs have a 'uid' field
+            .get();
+
+        for (var doc in userSnapshot.docs) {
+          Map data = doc.data() as Map<String, dynamic>;
+          String? fetchedUid = data['uid'];
+          String? fetchedUsername =
+              data['username']; // Assuming 'users' docs have a 'username' field
+          if (fetchedUid != null && fetchedUsername != null) {
+            _userUsernameCache[fetchedUid] = fetchedUsername;
+          } else {
+            // Handle cases where uid or username fields might be missing
+            if (kDebugMode) {
+              print("User doc missing uid or username: ${doc.id}");
+            }
+            // Optionally add a placeholder
+          }
+        }
+        notifyListeners(); // Notify after processing each batch
+      }
+    } catch (e) {
+      if (kDebugMode) print("Error fetching usernames by uid field: $e");
+      // Optionally set temporary placeholders for UIDs that failed lookup
+      for (var uid in uniqueUidsToFetch) {
+        if (!_userUsernameCache.containsKey(uid)) {
+          _userUsernameCache[uid] = 'User N/A';
+        }
+      }
+      notifyListeners();
+    }
   }
 
-  void setName(String name) {
-    _groupName = name;
-    notifyListeners();
-  }
-
-  void setCode(String code) {
-    _groupCode = code;
-    notifyListeners();
-  }
-
-  void addMessage(Message message) {
-    _messages.add(message);
-    notifyListeners();
-  }
-
-  void addMember(String member) {
-    _members.add(member);
-    notifyListeners();
-  }
-
-  void removeMember(String member) {
-    _members.remove(member);
-    notifyListeners();
-  }
-
-  void clearGroup() {
-    //clear group
-    _groupId = null;
-    _groupName = null;
-    _groupCode = null;
+  // NEW METHOD: leaveGroup
+  // Stops streams and clears state when leaving a group.
+  void leaveGroup() {
+    _messagesSubscription?.cancel();
+    _groupSubscription?.cancel();
     _messages.clear();
-    _members.clear();
-    _ownerId = null;
+    _currentGroup = null;
+    _activeGroupId = null;
+    _userUsernameCache.clear(); // Clear cache
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _messagesSubscription?.cancel();
+    _groupSubscription?.cancel();
+    super.dispose();
+  }
+
+  // NEW METHOD: updateCurrentUser
+  // Updates the current user reference and fetches their username.
+  void updateCurrentUser(User? user) {
+    _currentUser = user;
+    if (_currentUser != null) {
+      _fetchUsernamesForUids(
+          [_currentUser!.uid]); // Fetch current user's username
+    }
+
+    // If user logs out while in a group, leave the group
+    if (_currentUser == null && isInGroup) {
+      if (kDebugMode) print("User logged out while in group, leaving group.");
+      leaveGroup();
+    }
+    notifyListeners();
+  }
+
+  // --- Firestore Actions (Updated to use UIDs and Group ID) ---
+
+  // NEW METHOD: sendMessage
+  // Sends a message to the active group in Firestore.
+  Future<void> sendMessage(String text) async {
+    if (_activeGroupId == null || _currentUser == null) {
+      if (kDebugMode) {
+        print("Cannot send message: Not in a group or user not logged in.");
+      }
+      return;
+    }
+    if (text.trim().isEmpty) return;
+
+    try {
+      await _firestore
+          .collection('groups')
+          .doc(_activeGroupId)
+          .collection('messages')
+          .add({
+        'senderId': _currentUser!.uid, // Store sender's UID
+        'text': text.trim(),
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      // Messages will be added to the list via the stream
+    } catch (e) {
+      if (kDebugMode) print("Error sending message: $e");
+      // Handle error
+    }
+  }
+
+  // NEW METHOD: updateGroupName
+  // Updates the name of the active group in Firestore.
+  Future<void> updateGroupName(String newName) async {
+    if (_activeGroupId == null || _currentUser == null) return;
+    if (_currentGroup?.ownerId != _currentUser?.uid) {
+      if (kDebugMode) print("Only the owner can change the group name.");
+      return;
+    }
+    if (newName.trim().isEmpty) return;
+
+    try {
+      await _firestore
+          .collection('groups')
+          .doc(_activeGroupId)
+          .update({'groupName': newName.trim()});
+      // Stream listener updates _currentGroup
+    } catch (e) {
+      if (kDebugMode) print("Error updating group name: $e");
+    }
+  }
+
+  // NEW METHOD: deleteGroup
+  // Deletes the active group from Firestore.
+  Future<void> deleteGroup() async {
+    if (_activeGroupId == null || _currentUser == null) return;
+    if (_currentGroup?.ownerId != _currentUser?.uid) {
+      if (kDebugMode) print("Only the owner can delete the group.");
+      return;
+    }
+
+    try {
+      // Consider Cloud Functions for recursive deletion of subcollections
+      await _firestore.collection('groups').doc(_activeGroupId).delete();
+      leaveGroup(); // Leave state after successful deletion
+      // UI layer should navigate away after calling this
+    } catch (e) {
+      if (kDebugMode) print("Error deleting group: $e");
+    }
+  }
+
+  // NEW METHOD: kickMember
+  // Removes a member from the active group (param is UID).
+  Future<void> kickMember(String userIdToKick) async {
+    if (_activeGroupId == null || _currentUser == null) return;
+    if (_currentGroup?.ownerId != _currentUser?.uid) {
+      if (kDebugMode) print("Only the owner can kick members.");
+      return;
+    }
+    if (_currentGroup!.ownerId == userIdToKick) {
+      if (kDebugMode) print("Cannot kick the owner.");
+      return;
+    }
+    if (!_currentGroup!.members.contains(userIdToKick)) {
+      if (kDebugMode) print("User is not a member of this group.");
+      return;
+    }
+
+    try {
+      await _firestore.collection('groups').doc(_activeGroupId).update({
+        'members': FieldValue.arrayRemove([userIdToKick]), // Remove by UID
+      });
+      // Stream listener updates _currentGroup
+    } catch (e) {
+      if (kDebugMode) print("Error kicking member: $e");
+    }
+  }
+
+  // NEW METHOD: transferOwnership
+  // Transfers ownership of the active group (param is new owner UID).
+  Future<void> transferOwnership(String newOwnerId) async {
+    if (_activeGroupId == null || _currentUser == null) return;
+    if (_currentGroup?.ownerId != _currentUser?.uid) {
+      if (kDebugMode) print("Only the current owner can transfer ownership.");
+      return;
+    }
+    if (_currentGroup!.ownerId == newOwnerId) {
+      if (kDebugMode) print("New owner is already the current owner.");
+      return;
+    }
+    if (!_currentGroup!.members.contains(newOwnerId)) {
+      if (kDebugMode) print("New owner is not a member of this group.");
+      return;
+    }
+
+    try {
+      await _firestore.collection('groups').doc(_activeGroupId).update({
+        'ownerId': newOwnerId, // Update with new owner UID
+      });
+      // Stream listener updates _currentGroup
+    } catch (e) {
+      if (kDebugMode) print("Error transferring ownership: $e");
+    }
+  }
+
+  // NEW METHOD: createGroup
+  // Creates a new group in Firestore.
+  // Needs owner's UID. Username is fetched later for display.
+  Future<String?> createGroup(String name, String code) async {
+    if (_currentUser == null) {
+      if (kDebugMode) print("User not logged in.");
+      return null;
+    }
+    final ownerId = _currentUser!.uid;
+
+    if (name.trim().isEmpty || code.trim().isEmpty) {
+      if (kDebugMode) print("Group name and code cannot be empty.");
+      return null;
+    }
+
+    try {
+      // Optional: Add logic here to check if group code is already in use
+      // This might involve a query and handling the result before creating.
+
+      DocumentReference docRef = await _firestore.collection('groups').add({
+        'ownerId': ownerId, // Store UID
+        'groupName': name.trim(),
+        'groupCode': code.trim(),
+        'members': [ownerId], // Add owner's UID as the first member
+      });
+
+      // Fetch and cache owner's username immediately if not already known
+      await _fetchUsernamesForUids([ownerId]);
+
+      // Initialize state for the newly created group
+      initGroup(docRef.id);
+      return docRef.id; // Return the new group ID
+    } catch (e) {
+      if (kDebugMode) print("Error creating group: $e");
+      // Handle error
+      return null;
+    }
+  }
+
+  // NEW METHOD: joinGroup
+  // Joins an existing group using its code.
+  // Needs joining user's UID. Username is fetched later.
+  Future<String?> joinGroup(String code) async {
+    if (_currentUser == null) {
+      if (kDebugMode) print("User not logged in.");
+      return null;
+    }
+    final userId = _currentUser!.uid;
+
+    if (code.trim().isEmpty) {
+      if (kDebugMode) print("Group code cannot be empty.");
+      return null;
+    }
+
+    try {
+      // Find the group by code
+      QuerySnapshot snapshot = await _firestore
+          .collection('groups')
+          .where('groupCode', isEqualTo: code.trim())
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        if (kDebugMode) print("Group not found with code: $code");
+        return null; // Group not found
+      }
+
+      DocumentSnapshot groupDoc = snapshot.docs.first;
+      Group groupToJoin = Group.fromFirestore(groupDoc);
+
+      // Check if user is already a member
+      if (groupToJoin.members.contains(userId)) {
+        if (kDebugMode) print("User is already a member of this group.");
+        initGroup(groupDoc.id); // Just initialize state if already a member
+        return groupDoc.id;
+      }
+
+      // Add the user to the members list
+      await groupDoc.reference.update({
+        'members': FieldValue.arrayUnion(
+            [userId]), // Use arrayUnion to avoid duplicates
+      });
+
+      // Fetch and cache joined user's username
+      await _fetchUsernamesForUids([userId]);
+
+      // Initialize the state for the joined group
+      initGroup(groupDoc.id);
+      return groupDoc.id; // Return the joined group ID
+    } catch (e) {
+      if (kDebugMode) print("Error joining group: $e");
+      // Handle error
+      return null;
+    }
+  }
+
+  // NEW METHOD: leaveCurrentGroup
+  // Removes the current user from the active group.
+  Future<void> leaveCurrentGroup() async {
+    if (_activeGroupId == null || _currentUser == null) return;
+
+    try {
+      // Check if the current user is the owner
+      if (_currentGroup?.ownerId == _currentUser?.uid) {
+        // Owner is leaving - need to handle ownership transfer or group deletion
+        if ((_currentGroup?.members.length ?? 0) > 1) {
+          throw Exception("Owner must transfer ownership before leaving.");
+        } else {
+          // Owner is the only member, can delete the group
+          if (kDebugMode) print("Owner is the only member, deleting group.");
+          await deleteGroup(); // Delete the group if owner is the last member
+          // deleteGroup handles state cleanup
+          return;
+        }
+      }
+
+      // If not the owner, just remove the member
+      await _firestore.collection('groups').doc(_activeGroupId).update({
+        'members': FieldValue.arrayRemove([_currentUser!.uid]), // Remove by UID
+      });
+
+      // Leave the group state
+      leaveGroup();
+      // UI layer should navigate away after calling this
+    } catch (e) {
+      if (kDebugMode) print("Error leaving group: $e");
+      rethrow; // Rethrow error so UI can catch the owner case
+    }
   }
 }
 
@@ -489,16 +915,19 @@ class FlashcardState extends ChangeNotifier {
 class User {
   final String email;
   final String username;
+  final String uid;
 
   User({
     required this.email,
     required this.username,
+    required this.uid,
   });
 
   factory User.fromMap(Map<String, dynamic> map) {
     return User(
       username: map['username'],
       email: map['email'],
+      uid: map['uid'],
     );
   }
 
@@ -506,6 +935,7 @@ class User {
     return {
       'email': email,
       'username': username,
+      'uid': uid,
     };
   }
 
@@ -517,6 +947,7 @@ class User {
     return User(
       email: email ?? this.email,
       username: username ?? this.username,
+      uid: uid ?? this.uid,
     );
   }
 }
@@ -618,10 +1049,10 @@ class Flashcard {
 
 class Group {
   final String groupId;
-  final String ownerId;
+  final String ownerId; // Firebase Auth UID of the owner
   final String groupName;
   final String groupCode;
-  final List<String> members;
+  final List<String> members; // List of Firebase Auth UIDs
 
   Group({
     required this.groupId,
@@ -631,6 +1062,17 @@ class Group {
     required this.members,
   });
 
+  factory Group.fromFirestore(DocumentSnapshot doc) {
+    Map data = doc.data() as Map<String, dynamic>;
+    return Group(
+      groupId: doc.id,
+      ownerId: data['ownerId'] ?? '',
+      groupName: data['groupName'] ?? 'Unnamed Group',
+      groupCode: data['groupCode'] ?? '',
+      members: List<String>.from(data['members'] ?? []),
+    );
+  }
+
   Map<String, dynamic> toFirestore() {
     return {
       'ownerId': ownerId,
@@ -639,47 +1081,38 @@ class Group {
       'members': members,
     };
   }
-
-  factory Group.fromFirestore(
-    DocumentSnapshot<Map<String, dynamic>> snapshot,
-    SnapshotOptions? options,
-  ) {
-    final data = snapshot.data();
-    return Group(
-      groupId: snapshot.id,
-      ownerId: data?['ownerId'] ?? '',
-      groupName: data?['groupName'] ?? '',
-      groupCode: data?['groupCode'] ?? '',
-      members: List<String>.from(data?['members'] ?? []),
-    );
-  }
 }
 
 class Message {
-  final String senderId;
-  final String senderName; // Added sender's name
+  final String messageId;
+  final String senderId; // Firebase Auth UID of the sender
   final String text;
+  final DateTime timestamp;
 
   Message({
+    required this.messageId,
     required this.senderId,
-    required this.senderName,
     required this.text,
+    required this.timestamp,
   });
+
+  factory Message.fromFirestore(DocumentSnapshot doc) {
+    Map data = doc.data() as Map<String, dynamic>;
+    Timestamp? ts = data['timestamp'] as Timestamp?;
+    return Message(
+      messageId: doc.id,
+      senderId: data['senderId'] ?? '',
+      text: data['text'] ?? '',
+      timestamp: ts?.toDate() ?? DateTime.now(),
+    );
+  }
 
   Map<String, dynamic> toFirestore() {
     return {
       'senderId': senderId,
-      'senderName': senderName,
       'text': text,
+      'timestamp': FieldValue.serverTimestamp(),
     };
-  }
-
-  factory Message.fromFirestore(Map<String, dynamic> data) {
-    return Message(
-      senderId: data['senderId'] ?? '',
-      senderName: data['senderName'] ?? 'Unknown', // Default to 'Unknown'
-      text: data['text'] ?? '',
-    );
   }
 }
 //! ----------------------
@@ -1637,13 +2070,12 @@ class _HomePageState extends State<HomePage> {
               child: TextButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  // context.read<HomeState>().toggleIsSomething();
+                  context.read<HomeState>().toggleIsSomething();
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => ChatPage(
-                        classGroupName: generateRandom_GroupName(),
-                        classGroupCode: generateRandom_GroupCode(),
+                        groupId: "123123123",
                       ),
                     ),
                   );
@@ -1796,11 +2228,133 @@ class _HomePageState extends State<HomePage> {
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  // NEW METHOD: _showCreateGroupDialog
+  // Shows a dialog to create a new group.
+  void _showCreateGroupDialog(BuildContext context, GroupState groupState) {
+    final nameController = TextEditingController();
+    final codeController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create New Group'),
+        backgroundColor: secondaryColor,
+        titleTextStyle: const TextStyle(color: textColor),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                  labelText: 'Group Name',
+                  labelStyle: TextStyle(color: textColor)),
+              style: const TextStyle(color: textColor),
+            ),
+            TextField(
+              controller: codeController,
+              decoration: const InputDecoration(
+                  labelText: 'Group Code',
+                  labelStyle: TextStyle(color: textColor)),
+              style: const TextStyle(color: textColor),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel', style: TextStyle(color: textColor)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final name = nameController.text.trim();
+              final code = codeController.text.trim();
+              if (name.isNotEmpty && code.isNotEmpty) {
+                // Call createGroup and navigate on success
+                String? groupId = await groupState.createGroup(name, code);
+                if (groupId != null) {
+                  Navigator.of(context).pop(); // Dismiss dialog
+                  // Navigate to ChatPage
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => ChatPage(groupId: groupId)),
+                  );
+                } else {
+                  // Handle creation failure (e.g., show error message)
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text(
+                            'Failed to create group. Code might be taken.')),
+                  );
+                }
+              }
+            },
+            child: const Text('Create', style: TextStyle(color: textColor)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // NEW METHOD: _showJoinGroupDialog
+  // Shows a dialog to join an existing group.
+  void _showJoinGroupDialog(BuildContext context, GroupState groupState) {
+    final codeController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Join Group'),
+        backgroundColor: secondaryColor,
+        titleTextStyle: const TextStyle(color: textColor),
+        content: TextField(
+          controller: codeController,
+          decoration: const InputDecoration(
+              labelText: 'Group Code', labelStyle: TextStyle(color: textColor)),
+          style: const TextStyle(color: textColor),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel', style: TextStyle(color: textColor)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final code = codeController.text.trim();
+              if (code.isNotEmpty) {
+                // Call joinGroup and navigate on success
+                String? groupId = await groupState.joinGroup(code);
+                if (groupId != null) {
+                  Navigator.of(context).pop(); // Dismiss dialog
+                  // Navigate to ChatPage
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => ChatPage(groupId: groupId)),
+                  );
+                } else {
+                  // Handle join failure (e.g., show error message)
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text(
+                            'Failed to join group. Invalid code or already a member.')),
+                  );
+                }
+              }
+            },
+            child: const Text('Join', style: TextStyle(color: textColor)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final homeState = context.watch<HomeState>();
+    // Watch the GroupState to react to group changes
     final groupState = context.watch<GroupState>();
-    final user = FirebaseAuth.instance.currentUser;
+    final isInGroup = groupState.isInGroup;
+    final activeGroupId = groupState.activeGroupId; // Get the active group ID
 
     return Scaffold(
       appBar: AppBar(
@@ -1810,251 +2364,107 @@ class HomeScreen extends StatelessWidget {
         title: const Text(
           'Home',
           style: TextStyle(
-            fontWeight: FontWeight.w500,
-            fontSize: 26,
-          ),
+              fontWeight: FontWeight.w500,
+              fontSize: 26,
+              color: textColor // Use textColor
+              ),
         ),
       ),
       body: Center(
-        child: homeState.inGroup
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('In Group: ${groupState.groupName}'),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: () {
-                      // Navigate to the group chat page.
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ChatPage(
-                            classGroupName: groupState.groupName ??
-                                "Group", //use group name from groupState
-                            classGroupCode: groupState.groupCode ??
-                                "", //use group code from groupState
-                          ),
-                        ),
-                      );
-                    },
-                    child: const Text('Go to Group Chat'),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: () async {
-                      // Leave the group.
-                      if (homeState.currentGroupId != null) {
-                        try {
-                          // Remove the user from the 'members' array in Firestore
-                          await FirebaseFirestore.instance
-                              .collection('groups')
-                              .doc(homeState.currentGroupId)
-                              .update({
-                            'members': FieldValue.arrayRemove([user!.uid])
-                          });
-
-                          // Clear group data in GroupState
-                          groupState.clearGroup();
-                          homeState.setInGroup(false); // Update HomeState
-                        } catch (e) {
-                          logger.e('Error leaving group: $e');
-                          // Handle error (e.g., show a message to the user)
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Failed to leave group.')),
-                          );
-                        }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red, // Style as a leave button
-                    ),
-                    child: const Text('Leave Group'),
-                  ),
-                ],
-              )
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Not In a Group'),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: () {
-                      // Show options to create or join a group.
-                      _showCreateOrJoinDialog(context);
-                    },
-                    child: const Text('Create / Join Group'),
-                  ),
-                ],
-              ),
-      ),
-    );
-  }
-
-  void _showCreateOrJoinDialog(BuildContext context) {
-    final _groupNameController = TextEditingController();
-    final _groupCodeController = TextEditingController();
-    final user = FirebaseAuth.instance.currentUser;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Create or Join Group'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TextField(
-              controller: _groupNameController,
-              decoration: const InputDecoration(labelText: 'Group Name'),
-            ),
-            TextField(
-              controller: _groupCodeController,
-              decoration: const InputDecoration(labelText: 'Group Code'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final groupName = _groupNameController.text.trim();
-              final groupCode = _groupCodeController.text.trim();
-              if (groupName.isNotEmpty && groupCode.isNotEmpty) {
-                //create a group
-                try {
-                  // Create a new group document in the 'groups' collection.
-                  final groupRef = await FirebaseFirestore.instance
-                      .collection('groups')
-                      .add({
-                    'ownerId': user!.uid,
-                    'groupName': groupName,
-                    'groupCode': groupCode,
-                    'members': [
-                      user.uid
-                    ], // Add the creator to the members list.
-                  });
-
-                  // Get the ID of the newly created group
-                  final groupId = groupRef.id;
-
-                  //update groupID in groupState
-                  Provider.of<GroupState>(context, listen: false)
-                      .setGroupId(groupId);
-
-                  // Set the group data in GroupState.
-                  Provider.of<GroupState>(context, listen: false).setGroup(
-                    Group(
-                      groupId: groupId,
-                      ownerId: user.uid,
-                      groupName: groupName,
-                      groupCode: groupCode,
-                      members: [user.uid],
-                    ),
-                  );
-
-                  Provider.of<HomeState>(context, listen: false).setInGroup(
-                      true,
-                      groupId:
-                          groupId); //set the user to in a group and pass groupId
-
-                  Navigator.of(context).pop(); // Close the dialog.
-
-                  // Navigate to the chat page.
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ChatPage(
-                        classGroupName: groupName,
-                        classGroupCode: groupCode,
-                      ),
-                    ),
-                  );
-                } catch (e) {
-                  logger.e('Error creating group: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Failed to create group.')),
-                  );
-                }
-              } else if (groupCode.isNotEmpty) {
-                // Join an existing group using the group code.
-                try {
-                  // Query the 'groups' collection for a group with the given code.
-                  final groupSnapshot = await FirebaseFirestore.instance
-                      .collection('groups')
-                      .where('groupCode', isEqualTo: groupCode)
-                      .get();
-
-                  if (groupSnapshot.docs.isNotEmpty) {
-                    // A group with the code exists.
-                    final groupDoc = groupSnapshot.docs.first;
-                    final groupData = groupDoc.data();
-                    final groupId = groupDoc.id;
-
-                    // Check if the user is already a member
-                    List<String> members =
-                        List<String>.from(groupData['members'] ?? []);
-                    if (members.contains(user!.uid)) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('You are already in this group.')),
-                      );
-                      return; // Don't proceed if already in the group
-                    }
-
-                    // Add the user to the group's members list.
-                    members.add(user.uid);
-                    await FirebaseFirestore.instance
-                        .collection('groups')
-                        .doc(groupId)
-                        .update({'members': members});
-
-                    // Set the group data in GroupState.
-                    Provider.of<GroupState>(context, listen: false).setGroup(
-                      Group(
-                        groupId: groupId,
-                        ownerId: groupData['ownerId'],
-                        groupName: groupData['groupName'],
-                        groupCode: groupData['groupCode'],
-                        members: members,
-                      ),
-                    );
-                    Provider.of<HomeState>(context, listen: false).setInGroup(
-                        true,
-                        groupId: groupId); //set user to in group
-
-                    Navigator.of(context).pop(); // Close the dialog.
-
-                    // Navigate to the chat page.
-                    Navigator.of(context).push(
+            if (isInGroup) ...[
+              // --- User is in a group ---
+              Text(
+                  'You are in: ${groupState.groupName ?? 'Loading...'}', // Display current group name
+                  style: const TextStyle(fontSize: 18, color: textColor)),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  if (activeGroupId != null) {
+                    // Navigate back to the active chat page
+                    Navigator.push(
+                      context,
                       MaterialPageRoute(
-                        builder: (_) => ChatPage(
-                          classGroupName: groupData['groupName'],
-                          classGroupCode: groupData['groupCode'],
-                        ),
-                      ),
-                    );
-                  } else {
-                    // No group with the given code exists.
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Invalid Group Code.')),
+                          builder: (_) => ChatPage(groupId: activeGroupId)),
                     );
                   }
-                } catch (e) {
-                  logger.e('Error joining group: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Failed to join group.')),
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: elementColor), // Use elementColor
+                child: const Text('Return to Group Chat',
+                    style: TextStyle(color: textColor)),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: () async {
+                  // Show confirmation dialog before leaving
+                  final bool? confirmLeave = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Leave Group?'),
+                      content: const Text(
+                          'Are you sure you want to leave this group?'),
+                      backgroundColor: secondaryColor,
+                      titleTextStyle: const TextStyle(color: textColor),
+                      contentTextStyle: const TextStyle(color: textColor),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel',
+                              style: TextStyle(color: textColor)),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Leave',
+                              style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
                   );
-                }
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Please enter both Group Name and Code.')),
-                );
-              }
-            },
-            child: const Text('OK'),
-          ),
-        ],
+
+                  if (confirmLeave == true) {
+                    try {
+                      await groupState.leaveCurrentGroup();
+                      // After leaving, the HomeScreen UI will automatically update
+                      // because we are watching groupState.isInGroup
+                    } catch (e) {
+                      // Handle error if owner cannot leave
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(e.toString())),
+                      );
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red), // Use red color
+                child: const Text('Leave Group',
+                    style: TextStyle(color: textColor)),
+              ),
+            ] else ...[
+              // --- User is NOT in a group ---
+              const Text('You are not in a group.',
+                  style: TextStyle(fontSize: 18, color: textColor)),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () => _showCreateGroupDialog(
+                    context, groupState), // Pass context and groupState
+                style: ElevatedButton.styleFrom(backgroundColor: elementColor),
+                child: const Text('Create New Group',
+                    style: TextStyle(color: textColor)),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: () => _showJoinGroupDialog(
+                    context, groupState), // Pass context and groupState
+                style: ElevatedButton.styleFrom(backgroundColor: elementColor),
+                child: const Text('Join Group',
+                    style: TextStyle(color: textColor)),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -3409,12 +3819,18 @@ class AboutUsPage extends StatelessWidget {
 //? the main group chat screen
 //? --------------------------
 class ChatPage extends StatefulWidget {
-  final String classGroupName;
-  final String classGroupCode;
+  // REMOVED: final String classGroupName;
+  // REMOVED: final String classGroupCode;
+
+  // NEW FIELD: groupId
+  // The ID of the active group from Firestore.
+  final String groupId;
+
   const ChatPage({
     super.key,
-    required this.classGroupName,
-    required this.classGroupCode,
+    required this.groupId, // REQUIRE group ID
+    // REMOVED: required this.classGroupName,
+    // REMOVED: required this.classGroupCode,
   });
 
   @override
@@ -3424,105 +3840,78 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  // final List<String> _messages = []; // replace with your data source
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final groupState = context.read<GroupState>();
-    groupState.setName(widget.classGroupName);
-    groupState.setCode(widget.classGroupCode);
-
-    // Fetch initial messages from Firestore
-    _fetchMessages();
-  }
-
-  //method to fetch messages
-  Future<void> _fetchMessages() async {
-    final groupState = context.read<GroupState>();
-    try {
-      //get the messages from firestore
-      final messagesSnapshot = await FirebaseFirestore.instance
-          .collection('groups')
-          .doc(groupState.groupId) // Use the group ID from GroupState
-          .collection('messages')
-          .orderBy('timestamp') //order by time
-          .get();
-
-      // Clear existing messages
-      groupState.messages.clear();
-
-      //add messages
-      for (final doc in messagesSnapshot.docs) {
-        final messageData = doc.data();
-        final message = Message.fromFirestore(messageData);
-        groupState.addMessage(message);
-      }
-    } catch (e) {
-      logger.e('Error fetching messages: $e');
-      //show error
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to load messages')),
-      );
-    }
+  void initState() {
+    super.initState();
+    // Initialize the GroupState with the current group ID
+    // Use Future.microtask to avoid calling notifyListeners during build
+    Future.microtask(() {
+      Provider.of<GroupState>(context, listen: false).initGroup(widget.groupId);
+    });
+    // Add listener to scroll to bottom on new messages
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<GroupState>(context, listen: false)
+          .addListener(_scrollToBottom);
+    });
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    Provider.of<GroupState>(context, listen: false)
+        .removeListener(_scrollToBottom);
+    // Note: GroupState itself is disposed higher up in the tree by Provider
     super.dispose();
   }
 
-  void _sendMessage() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-    final groupState = context.read<GroupState>();
-
-    try {
-      // Add the message to Firestore, including sender's name.
-      final senderName =
-          user?.displayName ?? 'Unknown'; // Get sender's name or use "Unknown"
-      final message = Message(
-        senderId: user!.uid,
-        senderName: senderName,
-        text: text,
-      );
-      await FirebaseFirestore.instance
-          .collection('groups')
-          .doc(groupState.groupId) // Use the group ID from GroupState
-          .collection('messages')
-          .add(message.toFirestore());
-
-      //add message to group state
-      groupState.addMessage(message);
-
-      _controller.clear();
-      // Scroll to the bottom after sending the message.
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
-    } catch (e) {
-      logger.e('Error sending message: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to send message.')),
-      );
     }
   }
 
+  void _sendMessage() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    // Call the sendMessage method on GroupState
+    Provider.of<GroupState>(context, listen: false).sendMessage(text);
+
+    _controller.clear();
+    // Auto-scrolling is handled by the listener
+  }
+
   void _openGroupSettings() {
+    // Navigate to GroupSettingsScreen, PASSING the groupId
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const GroupSettingsScreen()),
+      MaterialPageRoute(
+          builder: (_) => GroupSettingsScreen(groupId: widget.groupId)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // Watch the GroupState for changes
     final groupState = context.watch<GroupState>();
+    final messages = groupState.messages; // List of Message objects from stream
+    final currentUserId = groupState.currentUserId; // Get current user UID
+
+    // Show loading indicator if group data isn't ready yet
+    if (groupState.currentGroup == null) {
+      return Scaffold(
+          appBar: AppBar(
+              title: const Text('Loading Group...',
+                  style: TextStyle(color: textColor)),
+              backgroundColor: secondaryColor),
+          body: const Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
@@ -3530,53 +3919,112 @@ class _ChatPageState extends State<ChatPage> {
         title: GestureDetector(
           onTap: _openGroupSettings,
           child: Text(
-            groupState.groupName ?? 'Null String',
+            groupState.groupName ??
+                'Loading...', // Display actual group name from state
             style: const TextStyle(
-              fontWeight: FontWeight.w500,
-              fontSize: 18,
-            ),
+                fontWeight: FontWeight.w500, fontSize: 18, color: textColor),
           ),
         ),
+        // Add a leave group button (optional, could be only in settings)
+        // Keeping it here as it was in the previous version
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.exit_to_app, color: textColor),
+            tooltip: 'Leave Group',
+            onPressed: () async {
+              final bool? confirmLeave = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Leave Group?'),
+                  content:
+                      const Text('Are you sure you want to leave this group?'),
+                  backgroundColor: secondaryColor,
+                  titleTextStyle: const TextStyle(color: textColor),
+                  contentTextStyle: const TextStyle(color: textColor),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel',
+                          style: TextStyle(color: textColor)),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('Leave',
+                          style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              );
+
+              if (confirmLeave == true) {
+                try {
+                  await Provider.of<GroupState>(context, listen: false)
+                      .leaveCurrentGroup();
+
+                  // Navigate back to Home after leaving
+                  Navigator.of(context).pop(); // Pop ChatPage
+                  // The HomeScreen UI will automatically update as groupState.isInGroup becomes false
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(e.toString())),
+                  );
+                }
+              }
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
-          // Message list
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemCount: groupState.messages.length,
+              itemCount: messages.length,
               itemBuilder: (context, i) {
-                final message = groupState.messages[i];
-                final isCurrentUser =
-                    message.senderId == FirebaseAuth.instance.currentUser?.uid;
+                final message = messages[i];
+                final isSentByMe =
+                    message.senderId == currentUserId; // Check by UID
+
+                // Get the username for the sender UID using the state's helper
+                String senderUsername =
+                    groupState.getUsername(message.senderId);
+
                 return Align(
-                  alignment: isCurrentUser
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
+                  alignment:
+                      isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isCurrentUser ? secondaryColor : elementColor,
+                      color: isSentByMe ? secondaryColor : elementColor,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Column(
-                      crossAxisAlignment: isCurrentUser
+                      crossAxisAlignment: isSentByMe
                           ? CrossAxisAlignment.end
                           : CrossAxisAlignment.start,
                       children: [
+                        // Display sender Username
                         Text(
-                          message.senderName, // Display sender's name
-                          style: const TextStyle(
+                          senderUsername, // Use the fetched username
+                          style: TextStyle(
+                            fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                            color: textColor.withOpacity(0.7),
                           ),
-                          // Set color for sender name
-                          textAlign:
-                              isCurrentUser ? TextAlign.right : TextAlign.left,
                         ),
-                        Text(message.text),
+                        const SizedBox(height: 4),
+                        // Display message text
+                        Text(
+                          message.text,
+                          style: const TextStyle(color: textColor),
+                        ),
+                        // Optional: Add timestamp if needed
+                        // Text(
+                        //   DateFormat('HH:mm').format(message.timestamp),
+                        //   style: TextStyle(fontSize: 8, color: textColor.withOpacity(0.6)),
+                        // ),
                       ],
                     ),
                   ),
@@ -3584,7 +4032,6 @@ class _ChatPageState extends State<ChatPage> {
               },
             ),
           ),
-          // Input bar
           Container(
             color: elementColor,
             child: SafeArea(
@@ -3599,21 +4046,26 @@ class _ChatPageState extends State<ChatPage> {
                         onSubmitted: (_) => _sendMessage(),
                         decoration: const InputDecoration(
                           hintText: 'Type your message',
+                          hintStyle: TextStyle(color: textColor),
                           border: OutlineInputBorder(
                             borderSide: BorderSide(color: textColor),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderSide: BorderSide(color: textColor),
                           ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: textColor),
+                          ),
                           isDense: true,
                           contentPadding: EdgeInsets.symmetric(
                               horizontal: 12, vertical: 10),
                         ),
+                        style: const TextStyle(color: textColor),
                       ),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.send),
+                      icon: const Icon(Icons.send, color: textColor),
                       onPressed: _sendMessage,
                     ),
                   ],
@@ -3634,9 +4086,14 @@ class _ChatPageState extends State<ChatPage> {
 //? the group chat settings page
 //? ----------------------------
 class GroupSettingsScreen extends StatefulWidget {
-  //final List<String> members; // list of usernames
+  // REMOVED: final List members;
 
-  const GroupSettingsScreen({super.key});
+  // NEW FIELD: groupId
+  // The ID of the active group from Firestore.
+  final String groupId;
+
+  const GroupSettingsScreen(
+      {super.key, required this.groupId}); // REQUIRE group ID
 
   @override
   _GroupSettingsScreenState createState() => _GroupSettingsScreenState();
@@ -3648,10 +4105,14 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    // No need to call initGroup here, ChatPage already initialized GroupState
+    // with this groupId. This screen just watches that state instance.
   }
 
-  void _showEditNameDialog() {
-    final controller = TextEditingController();
+  // Modified to take GroupState as a parameter
+  void _showEditNameDialog(GroupState groupState) {
+    // Pre-fill with current name from state
+    final controller = TextEditingController(text: groupState.groupName);
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -3677,20 +4138,27 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
             focusedBorder: OutlineInputBorder(
               borderSide: BorderSide(color: textColor),
             ),
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
         ),
         actions: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              SizedBox(
-                width: 90,
-                height: 40,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: darkerSecondaryColor,
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: darkerSecondaryColor,
+                  shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
+                ),
+                child: const SizedBox(
+                  width: 90,
+                  height: 40,
                   child: Center(
                     child: Text(
                       'Cancel',
@@ -3699,14 +4167,21 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 90,
-                height: 40,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: primaryColor,
+              TextButton(
+                onPressed: () {
+                  // Call updateGroupName on GroupState
+                  groupState.updateGroupName(controller.text);
+                  Navigator.of(context).pop();
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
+                ),
+                child: const SizedBox(
+                  width: 90,
+                  height: 40,
                   child: Center(
                     child: Text(
                       'Save',
@@ -3722,77 +4197,142 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
     );
   }
 
-  void _showMemberOptions(String member) {
+  // Modified to take member's UID and GroupState as parameters
+  void _showMemberOptions(String memberUserId, GroupState groupState) {
+    final currentUserId = groupState.currentUserId;
+    final isOwner = groupState.groupOwnerId == currentUserId;
+    final isSelf = memberUserId == currentUserId;
+    final canKick = isOwner && !isSelf;
+    final canTransferOwnership = isOwner && !isSelf;
+
+    // Get the username for the member's UID for display in the dialog title
+    String memberUsername = groupState.getUsername(memberUserId);
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(member),
-        actions: [
-          TextButton(
-            onPressed: () {},
-            style: TextButton.styleFrom(
-              backgroundColor: darkerSecondaryColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+        backgroundColor: secondaryColor,
+        title: Text(memberUsername,
+            style:
+                const TextStyle(color: textColor)), // Display username in title
+        content: SingleChildScrollView(
+          child: ListBody(
+            children: [
+              if (canTransferOwnership)
+                TextButton(
+                  onPressed: () {
+                    groupState.transferOwnership(memberUserId); // Pass the UID
+                    Navigator.pop(context);
+                  },
+                  style: TextButton.styleFrom(
+                    backgroundColor: darkerSecondaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('Transfer Ownership',
+                      style: TextStyle(color: textColor)),
+                ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Mute not implemented yet')),
+                  );
+                  Navigator.pop(context);
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: darkerSecondaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text('Mute', style: TextStyle(color: textColor)),
               ),
-            ),
-            child: const Text('Transfer Ownership',
-                style: TextStyle(color: textColor)),
-          ),
-          TextButton(
-            onPressed: () {},
-            style: TextButton.styleFrom(
-              backgroundColor: darkerSecondaryColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+              const SizedBox(height: 8),
+              if (canKick)
+                TextButton(
+                  onPressed: () {
+                    groupState.kickMember(memberUserId); // Pass the UID
+                    Navigator.pop(context);
+                  },
+                  style: TextButton.styleFrom(
+                    backgroundColor: darkerSecondaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('Kick', style: TextStyle(color: textColor)),
+                ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Ban not implemented yet')),
+                  );
+                  Navigator.pop(context);
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: darkerSecondaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text('Ban', style: TextStyle(color: textColor)),
               ),
-            ),
-            child: const Text('Mute', style: TextStyle(color: textColor)),
-          ),
-          TextButton(
-            onPressed: () {},
-            style: TextButton.styleFrom(
-              backgroundColor: darkerSecondaryColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  backgroundColor: darkerSecondaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text('Cancel', style: TextStyle(color: textColor)),
               ),
-            ),
-            child: const Text('Kick', style: TextStyle(color: textColor)),
+            ],
           ),
-          TextButton(
-            onPressed: () {},
-            style: TextButton.styleFrom(
-              backgroundColor: darkerSecondaryColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Ban', style: TextStyle(color: textColor)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(
-              backgroundColor: darkerSecondaryColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Cancel', style: TextStyle(color: textColor)),
-          ),
-        ],
+        ),
       ),
     );
   }
 
+  // Helper to copy group code
+  void _copyGroupCode(String code) {
+    Clipboard.setData(ClipboardData(text: code)).then((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Group code copied to clipboard!')),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final groupState = context.watch<GroupState>();
+    // Get list of member UIDs from state
+    final memberUids = groupState.memberUids;
+    final currentUserId = groupState.currentUserId;
+    final isOwner = groupState.groupOwnerId == currentUserId;
+
+    // Show loading indicator if group data isn't ready
+    if (groupState.currentGroup == null) {
+      return Scaffold(
+          appBar: AppBar(
+              title: const Text('Loading Settings...',
+                  style: TextStyle(color: textColor)),
+              backgroundColor: primaryColor),
+          body: const Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: primaryColor,
         centerTitle: true,
         title: const Text(
           'Group Settings',
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 26),
+          style: TextStyle(
+              fontWeight: FontWeight.w500, fontSize: 26, color: textColor),
         ),
       ),
       body: Padding(
@@ -3806,7 +4346,7 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 16),
-            Text(
+            const Text(
               textAlign: TextAlign.left,
               'Group Name',
               style: TextStyle(
@@ -3815,34 +4355,38 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-
-            SizedBox(
-              height: 5,
-            ),
-
+            const SizedBox(height: 5),
             Container(
               decoration: BoxDecoration(
                 color: elementColor,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: ListTile(
-                title: Text(
-                    context.watch<GroupState>().groupName ?? "Null Name",
-                    style: TextStyle(color: textColor)),
-                trailing: IconButton(
-                  icon: const Icon(Icons.edit, color: textColor),
-                  onPressed: _showEditNameDialog,
-                ),
+                title: Text(groupState.groupName ?? "Loading...",
+                    style: const TextStyle(color: textColor)),
+                trailing: isOwner // Only show edit icon to owner
+                    ? IconButton(
+                        icon: const Icon(Icons.edit, color: textColor),
+                        onPressed: () =>
+                            _showEditNameDialog(groupState), // Pass groupState
+                      )
+                    : null, // Hide icon if not owner
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
               ),
             ),
+            const SizedBox(height: 32),
 
-            SizedBox(
-              height: 32,
+            const Text(
+              textAlign: TextAlign.left,
+              'Group Code',
+              style: TextStyle(
+                fontSize: 18,
+                color: textColor,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-
-            // Group code tile
+            const SizedBox(height: 5),
             Container(
               decoration: BoxDecoration(
                 color: elementColor,
@@ -3851,9 +4395,10 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
               child: ListTile(
                 title: Text(
                   _codeVisible
-                      ? context.read<GroupState>().groupCode ?? "Null Code"
+                      ? groupState.groupCode ??
+                          "Loading..." // Display code from state
                       : '••••••••',
-                  style: TextStyle(color: textColor),
+                  style: const TextStyle(color: textColor),
                 ),
                 trailing: IconButton(
                   icon: Icon(
@@ -3862,39 +4407,70 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                   ),
                   onPressed: () => setState(() => _codeVisible = !_codeVisible),
                 ),
+                leading: IconButton(
+                  // Add copy button
+                  icon: const Icon(Icons.copy, color: textColor),
+                  onPressed: () {
+                    if (groupState.groupCode != null) {
+                      _copyGroupCode(groupState.groupCode!);
+                    }
+                  },
+                ),
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
               ),
             ),
+            const SizedBox(height: 24),
 
-            SizedBox(
-              height: 24,
-            ),
-
-            // Members header
-            Align(
+            const Align(
               alignment: Alignment.centerLeft,
               child: Text('Members List',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: textColor)),
             ),
+            const SizedBox(height: 8),
 
-            // Members list
             Expanded(
               child: ListView.builder(
-                itemCount: context.watch<GroupState>().members.length,
+                itemCount: memberUids.length, // Iterate over UIDs
                 itemBuilder: (context, idx) {
-                  final member = context.watch<GroupState>().members[idx];
+                  final memberUid = memberUids[idx]; // Get the member UID
+                  final isMemberOwner = groupState.groupOwnerId == memberUid;
+                  final isSelf = memberUid == currentUserId;
+
+                  // Get the username for the member's UID using the state's helper
+                  String memberUsername = groupState.getUsername(memberUid);
+
                   return Container(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
                     decoration: BoxDecoration(
                       color: elementColor,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: ListTile(
-                      leading: IconButton(
-                        icon: const Icon(Icons.more_vert, color: textColor),
-                        onPressed: () => _showMemberOptions(member),
-                      ),
-                      title: Text(member, style: TextStyle(color: textColor)),
+                      leading: isOwner &&
+                              !isSelf // Only show options icon to owner (not on self)
+                          ? IconButton(
+                              icon:
+                                  const Icon(Icons.more_vert, color: textColor),
+                              // Pass the member's UID to the options dialog
+                              onPressed: () =>
+                                  _showMemberOptions(memberUid, groupState),
+                            )
+                          : null, // Hide icon if not owner or is self
+                      // Display member Username
+                      title: Text(
+                          memberUsername + (isMemberOwner ? ' (Owner)' : ''),
+                          style: const TextStyle(color: textColor)),
+                      trailing: isSelf && !isOwner
+                          ? const Text('(You)',
+                              style: TextStyle(
+                                  color: textColor,
+                                  fontStyle: FontStyle.italic))
+                          : null,
+
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 0),
                     ),
@@ -3903,40 +4479,70 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
               ),
             ),
 
-            // Delete Group button
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Align(
-                alignment: Alignment.center,
-                child: SizedBox(
-                  width: 150, // Adjust this value to your desired width
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: ListTile(
-                      title: const Text(
-                        'Delete',
-                        style: TextStyle(
-                          color: textColor,
-                        ),
-                        textAlign: TextAlign.center,
+            // Delete Group button (only for owner)
+            if (isOwner) // Only show delete button to owner
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Align(
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: 150,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const HomePage(),
+                      child: ListTile(
+                        title: const Text(
+                          'Delete Group',
+                          style: TextStyle(
+                            color: textColor,
                           ),
-                        );
-                      },
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 0),
+                          textAlign: TextAlign.center,
+                        ),
+                        onTap: () async {
+                          final bool? confirmDelete = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Delete Group?'),
+                              content: const Text(
+                                  'Are you sure you want to delete this group? This action cannot be undone.'),
+                              backgroundColor: secondaryColor,
+                              titleTextStyle: const TextStyle(color: textColor),
+                              contentTextStyle:
+                                  const TextStyle(color: textColor),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(false),
+                                  child: const Text('Cancel',
+                                      style: TextStyle(color: textColor)),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(true),
+                                  child: const Text('Delete',
+                                      style: TextStyle(color: Colors.red)),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirmDelete == true) {
+                            await groupState.deleteGroup();
+                            // After deleting, pop both the settings screen and the chat screen
+                            Navigator.of(context).pop(); // Pop settings
+                            Navigator.of(context).pop(); // Pop chat
+                            // The HomeScreen UI will automatically update
+                          }
+                        },
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 0),
+                      ),
                     ),
                   ),
                 ),
               ),
-            )
           ],
         ),
       ),
