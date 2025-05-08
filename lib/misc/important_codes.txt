@@ -1,0 +1,128 @@
+// class DatabaseServices {
+//   final _firestore = FirebaseFirestore.instance;
+
+//   late final CollectionReference _usersRef;
+
+//   DatabaseServices() {
+//     // returns a schema associated reference
+//     _usersRef = FirebaseFirestore.instance
+//         .collection('users')
+//         .withConverter<AppUser>(
+//             fromFirestore:
+//                 (DocumentSnapshot<Map<String, dynamic>> snapshot, _) =>
+//                     AppUser.fromMap(
+//                       snapshot.data()!,
+//                     ),
+//             toFirestore: (AppUser user, _) => user.toMap());
+//   }
+
+//   Stream<QuerySnapshot> getUsers() {
+//     return _usersRef.snapshots();
+//   }
+
+//   void addUser(User user) async {
+//     _usersRef.add(user);
+//   }
+// }
+
+//! END OF FIRESTORE HELPER SECTION
+
+//* PREFERED LAYOUTS AND DESIGNS
+/*
+
+
+
+//! buttons
+  ElevatedButton(
+    onPressed: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => SomeWhere()),
+      );
+    },
+    style: ElevatedButton.styleFrom(
+      foregroundColor: primaryColor,
+      backgroundColor: secondaryColor,
+      minimumSize: const Size(double.infinity, 48),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+    ),
+    child: const Text('Something'),
+  ),
+
+//! more buttons
+  SizedBox(
+    height: 35,
+    width: 50,
+    child: Container(
+      height: 30,
+      decoration: BoxDecoration(
+        color: darkerSecondaryColor, // Your desired color
+        borderRadius: BorderRadius.circular(
+            8.0), // Optional rounded corners
+      ),
+      child: TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text(
+          'Join',
+          style: TextStyle(
+            fontSize: 10,
+            color: textColor,
+          ),
+        ),
+      ),
+    ),
+  ),  
+
+//! search field
+  child: TextField(
+    decoration: InputDecoration(
+      filled: true,
+      fillColor: primaryColor,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide.none,
+      ),
+      hintText: 'search for notes',
+      prefixIcon: const Icon(Icons.search),
+    ),
+  ),
+
+
+//! some font styles
+  style: TextStyle(
+    fontWeight: FontWeight.w500,
+    fontSize: 26,
+  ),
+
+//! row or column with flexible
+  child: Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      const Flexible(
+        flex: 2,
+        ...
+      ),
+      SizedBox(
+        width: ...,
+      ),
+      Flexible(
+        flex: 5,
+        ...
+      ),
+    ],
+  ),
+*/
+
+//* COMMONLY USED CODES
+/*
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+        builder: (context) => SomeWhere()),
+  );
+
+
+*/
