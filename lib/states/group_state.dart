@@ -275,6 +275,26 @@ class GroupState extends ChangeNotifier {
     }
   }
 
+  Future<void> sendMessageByBot(String text) async {
+    if (text.trim().isEmpty) return;
+
+    try {
+      await _firestore
+          .collection('groups')
+          .doc(_activeGroupId)
+          .collection('messages')
+          .add({
+        'senderId': 'chatbot', // Store sender's UID
+        'text': text.trim(),
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      // Messages will be added to the list via the stream
+    } catch (e) {
+      if (kDebugMode) print("Error sending message: $e");
+      // Handle error
+    }
+  }
+
   // NEW METHOD: updateGroupName
   // Updates the name of the active group in Firestore.
   Future<void> updateGroupName(String newName) async {

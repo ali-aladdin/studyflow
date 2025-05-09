@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:logger/logger.dart';
@@ -5,6 +7,8 @@ import 'package:provider/provider.dart';
 import 'package:studyflow_v2/misc/colors.dart';
 import 'package:studyflow_v2/pages/chat_edit_page.dart';
 import 'package:studyflow_v2/states/group_state.dart';
+import 'package:http/http.dart' as http; // Import http package
+import 'dart:convert'; // Import dart:convert for JSON handling
 
 class ChatPage extends StatefulWidget {
   final String groupId;
@@ -21,8 +25,13 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final String DEVELOPER_ACCESS_TOKEN = "_FfOo5uFpUH_F1KvaQrmOJGqaWl3lkaK";
+
   GroupState? _groupState;
   Logger logger = Logger();
+
+  final String _chatbotPromptPrefix =
+      "You are a helpful and friendly member of a study group.  Reply to the following message:"; // Add context
 
   @override
   void initState() {
@@ -67,15 +76,78 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  void _sendMessage() {
+  // Modified _sendMessage to handle @bot commands
+  void _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    // Call the sendMessage method on GroupState
-    Provider.of<GroupState>(context, listen: false).sendMessage(text);
+    if (text.startsWith('@bot')) {
+      // Extract the message for the bot
+      Provider.of<GroupState>(context, listen: false).sendMessage(text);
+      final botMessage = text.substring(4).trim(); // Remove "@bot "
+      if (botMessage.isNotEmpty) {
+        // Send to chatbot API and handle response
+        await _sendToChatbot(botMessage);
+      } else {
+        //  Optionally send a message to the group indicating that the user needs to provide a message after @bot
+        Provider.of<GroupState>(context, listen: false)
+            .sendMessage("Please provide a message for the bot after @bot");
+      }
+    } else {
+      // Normal message: Send directly to Firestore
+      Provider.of<GroupState>(context, listen: false).sendMessage(text);
+    }
 
     _controller.clear();
     // Auto-scrolling is handled by the listener
+  }
+
+  // New method: _sendToChatbot
+  Future<void> _sendToChatbot(String message) async {
+    const apiKey =
+        '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';
+    const String apiUrl = 'https://api.openai.com/v1/chat/completions';
+
+    try {
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          "model": "gpt-3.5-turbo",
+          "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": message},
+          ],
+          "max_tokens": 500,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        final botReply = responseData['choices'][0]['message']['content'] ??
+            "I couldn't understand that.";
+        Provider.of<GroupState>(context, listen: false)
+            .sendMessageByBot(botReply);
+      } else {
+        logger
+            .e("Chatbot API error: ${response.statusCode} - ${response.body}");
+        Provider.of<GroupState>(context, listen: false).sendMessageByBot(
+            "Sorry, the bot is having trouble. Please try again later. Error: ${response.statusCode}");
+      }
+    } catch (e) {
+      if (e is SocketException) {
+        logger.e("Network error communicating with chatbot API: $e");
+        Provider.of<GroupState>(context, listen: false).sendMessageByBot(
+            "Sorry, I couldn't reach the bot. Please check your network connection.");
+      } else {
+        logger.e("Error communicating with chatbot API: $e");
+        Provider.of<GroupState>(context, listen: false).sendMessageByBot(
+            "Sorry, I couldn't reach the bot. An unexpected error occurred.");
+      }
+    }
   }
 
   void _openGroupSettings() {

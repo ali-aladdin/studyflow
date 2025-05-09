@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:studyflow_v2/misc/colors.dart';
@@ -8,6 +9,7 @@ import 'package:studyflow_v2/pages/flashcard_screen.dart';
 import 'package:studyflow_v2/pages/home_screen.dart';
 import 'package:studyflow_v2/pages/note_screen.dart';
 import 'package:studyflow_v2/pages/user_settings.dart';
+import 'package:studyflow_v2/states/group_state.dart';
 import 'package:studyflow_v2/states/home_state.dart';
 
 class HomePage extends StatefulWidget {
@@ -20,46 +22,26 @@ class HomePage extends StatefulWidget {
 
 bool inGroup = false;
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _selectedIndex = 0;
-  final TextEditingController __groupCodeInput = TextEditingController();
 
-  //! UTILITY FUNCTIONS
-  List<String> adjectives = [
-    "Bold",
-    "Fearless",
-    "United",
-    "Strong",
-    "Luminous",
-    "Epic"
-  ];
-  List<String> nouns = [
-    "Warriors",
-    "Explorers",
-    "Dreamers",
-    "Innovators",
-    "Pioneers",
-    "Voyagers"
-  ];
-
-  String generateRandom_GroupName() {
-    Random random = Random();
-    String adjective = adjectives[random.nextInt(adjectives.length)];
-    String noun = nouns[random.nextInt(nouns.length)];
-
-    return "$adjective$noun";
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      // App is terminating
+      _handleAppExit();
+    }
   }
 
-  String generateRandom_GroupCode() {
-    const String chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    Random rnd = Random();
-    String code = String.fromCharCodes(Iterable.generate(
-        6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
+  void _handleAppExit() {
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      // clear any previous group state
+      Provider.of<GroupState>(context, listen: false).leaveGroup();
 
-    return code;
+      // then update to the new user (or null)
+      Provider.of<GroupState>(context, listen: false).updateCurrentUser(user);
+    });
   }
-
-  //! END OF UTILITY FUNCTIONS
 
   // Dialog to create/join group:
   void _showGroupDialog() {
@@ -111,7 +93,6 @@ class _HomePageState extends State<HomePage> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8.0),
                     child: TextField(
-                      controller: __groupCodeInput,
                       decoration: InputDecoration(
                         filled: true,
                         fillColor: primaryColor,

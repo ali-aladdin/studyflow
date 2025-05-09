@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import 'package:studyflow_v2/misc/colors.dart';
-import 'package:studyflow_v2/pages/aboutus_page.dart'; // Import your AboutUsPage
+import 'package:studyflow_v2/pages/aboutus_page.dart';
 import 'package:logger/logger.dart';
 import 'package:studyflow_v2/pages/signin_page.dart';
+import 'package:studyflow_v2/states/group_state.dart';
 
 final logger = Logger();
 
@@ -29,29 +31,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadUserData() async {
     if (_user == null) {
-      // Handle the case where the user is not logged in.
       logger.e('User not logged in');
-      return; // Or show an error message, or navigate to the login screen.
+      return;
     }
 
     try {
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(_user!.uid)
+          .doc(_user.uid)
           .get();
       if (userDoc.exists) {
         setState(() {
-          _username = userDoc.data()?['username'] ??
-              ''; // Provide a default value in case the field is missing.
-          _email = _user.email ?? ''; // get email from the user object.
+          _username = userDoc.data()?['username'] ?? '';
+          _email = _user.email ?? '';
         });
       } else {
         logger.e('User document does not exist');
-        // Consider if you want to create a user document here if it doesn't exist
       }
     } catch (e) {
       logger.e('Error loading user data: $e');
-      // Show error
     }
   }
 
@@ -63,7 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await FirebaseFirestore.instance
           .collection('users')
-          .doc(_user!.uid)
+          .doc(_user.uid)
           .update({'username': newUsername});
       setState(() {
         _username = newUsername;
@@ -73,7 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } catch (e) {
       logger.e('Error updating username: $e');
-      _showErrorSnackBar('Failed to update username'); // Show error message
+      _showErrorSnackBar('Failed to update username');
     }
   }
 
@@ -84,7 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     try {
-      await _user.updateEmail(newEmail); // update email
+      await _user.verifyBeforeUpdateEmail(newEmail);
       await FirebaseFirestore.instance
           .collection('users')
           .doc(_user.uid)
@@ -122,17 +120,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _signOut() async {
     try {
       await FirebaseAuth.instance.signOut();
-      // Use pushReplacementNamed to prevent the user from being able to go back to the settings page with the back button.
       if (mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => SignInPage()),
-        ); // Make sure this route is defined
+        );
       }
     } catch (e) {
       logger.e('Error signing out: $e');
       _showErrorSnackBar('Failed to sign out.');
     }
+
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      // clear any previous group state
+      Provider.of<GroupState>(context, listen: false).leaveGroup();
+
+      // then update to the new user (or null)
+      Provider.of<GroupState>(context, listen: false).updateCurrentUser(user);
+    });
   }
 
   Future<void> _deleteAccount() async {
@@ -141,14 +146,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     try {
-      // Delete the user document in Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(_user.uid)
           .delete();
-      // Delete the user from Firebase Auth
       await _user.delete();
-      // Navigate to sign in
       if (mounted) {
         Navigator.push(
           context,
@@ -188,7 +190,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(32),
         children: [
-          // Username tile
           Container(
             decoration: BoxDecoration(
               color: elementColor,
@@ -213,7 +214,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(
             height: 15,
           ),
-          // Email tile
           Container(
             decoration: BoxDecoration(
               color: elementColor,
@@ -241,7 +241,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: SizedBox(
-              width: 175, // Adjust this value to your desired width
+              width: 175,
               child: Container(
                 decoration: BoxDecoration(
                   color: secondaryColor,
@@ -263,11 +263,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(
             height: 15,
           ),
-          // Logout
           Align(
             alignment: Alignment.centerLeft,
             child: SizedBox(
-              width: 110, // Adjust this value to your desired width
+              width: 110,
               child: Container(
                 decoration: BoxDecoration(
                   color: secondaryColor,
@@ -289,11 +288,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(
             height: 15,
           ),
-          // About Us
           Align(
             alignment: Alignment.centerLeft,
             child: SizedBox(
-              width: 110, // Adjust this value to your desired width
+              width: 110,
               child: Container(
                 decoration: BoxDecoration(
                   color: elementColor,
@@ -319,11 +317,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(
             height: 15,
           ),
-          // Delete Account
           Align(
             alignment: Alignment.centerLeft,
             child: SizedBox(
-              width: 150, // Adjust this value to your desired width
+              width: 150,
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.red,
@@ -422,7 +419,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) => AlertDialog(
         backgroundColor: secondaryColor,
         title: const Text(
-          'Change Email Address',
+          'Edit Email',
           style: TextStyle(color: textColor),
         ),
         content: Form(
@@ -434,8 +431,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 controller: emailController,
                 style: const TextStyle(color: textColor),
                 decoration: InputDecoration(
-                  labelStyle: const TextStyle(color: textColor),
-                  labelText: 'New Email',
                   filled: true,
                   fillColor: primaryColor,
                   border: OutlineInputBorder(
@@ -447,7 +442,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (value == null || value.isEmpty) {
                     return 'Please enter your new email address';
                   }
-                  // Basic email validation
                   if (!RegExp(r"^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+")
                       .hasMatch(value)) {
                     return 'Please enter a valid email address';
@@ -503,7 +497,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showChangePasswordDialog(BuildContext context) {
     final oldPassCtrl = TextEditingController();
     final newPassCtrl = TextEditingController();
-    final confirmNewPassCtrl = TextEditingController(); // Added controller.
+    final confirmNewPassCtrl = TextEditingController();
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -749,7 +743,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               TextButton(
                 onPressed: () {
                   if (_formKey.currentState!.validate()) {
-                    // Reauthenticate the user before deleting the account.
                     final user = FirebaseAuth.instance.currentUser;
                     if (user != null) {
                       final AuthCredential credential =
@@ -758,7 +751,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         password: passController.text.trim(),
                       );
                       user.reauthenticateWithCredential(credential).then((_) {
-                        _deleteAccount(); // Call delete account after reauthentication
+                        _deleteAccount();
                       }).catchError((error) {
                         logger.e("Error reauthenticating user: $error");
                         _showErrorSnackBar(
