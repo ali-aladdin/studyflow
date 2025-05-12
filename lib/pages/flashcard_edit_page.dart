@@ -63,23 +63,56 @@ class _FlashcardEditPageState extends State<FlashcardEditPage> {
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text('Delete Flashcard'),
+                    backgroundColor: secondaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    title: const Text(
+                      'Delete Flashcard',
+                      style: TextStyle(color: textColor),
+                    ),
                     content: const Text(
-                        'Are you sure you want to delete this flashcard?'),
+                      'Are you sure you want to delete this flashcard?',
+                      style: TextStyle(color: textColor),
+                    ),
                     actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Provider.of<FlashcardState>(context, listen: false)
-                              .deleteCard(widget.card);
-                          Navigator.of(context).pop(); // Close the dialog
-                          Navigator.of(context).pop(); // Go back to the list
-                        },
-                        child: const Text('Delete',
-                            style: TextStyle(color: Colors.red)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: TextButton.styleFrom(
+                              backgroundColor: darkerSecondaryColor,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(color: textColor),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Provider.of<FlashcardState>(context,
+                                      listen: false)
+                                  .deleteCard(widget.card);
+                              Navigator.of(context).pop(); // Close the dialog
+                              Navigator.of(context)
+                                  .pop(); // Go back to the list
+                            },
+                            style: TextButton.styleFrom(
+                              backgroundColor: darkerSecondaryColor,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -173,11 +206,9 @@ class _FlashcardEditPageState extends State<FlashcardEditPage> {
               Provider.of<FlashcardState>(context, listen: false)
                   .addCard(flashcard);
             } else {
-              // Update existing flashcard
+              // Update existing flashcard using the new method
               Provider.of<FlashcardState>(context, listen: false)
-                  .editCardTitle(widget.card.id, flashcard.title);
-              Provider.of<FlashcardState>(context, listen: false)
-                  .editCardContent(widget.card.id, flashcard.content);
+                  .updateCard(flashcard);
             }
             Navigator.of(context).pop(); // Go back to the list
           }

@@ -21,6 +21,14 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<NoteState>(context, listen: false).fetchNotes();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     // Make a copy and sort so pinned are first
     final notes = Provider.of<NoteState>(context).notes;

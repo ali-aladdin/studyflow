@@ -14,6 +14,7 @@ class FlashcardsScreen extends StatefulWidget {
 
 class _FlashcardsScreenState extends State<FlashcardsScreen> {
   final TextEditingController _searchController = TextEditingController();
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -21,9 +22,17 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<FlashcardState>(context, listen: false).fetchFlashcards();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Copy and sort so pinned first
-    final cards = Provider.of<FlashcardState>(context).cards;
+    final flashcardState = Provider.of<FlashcardState>(context);
+    final cards = flashcardState.cards;
     final sortedCards = List<Flashcard>.from(cards)
       ..sort((a, b) {
         if (a.pinned == b.pinned) return 0;
@@ -59,7 +68,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                   borderSide: BorderSide.none,
                 ),
                 hintText: 'Search for flashcards',
-                hintStyle: TextStyle(
+                hintStyle: const TextStyle(
                   color: textColor,
                 ),
                 suffixIcon: const Icon(
@@ -98,19 +107,40 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
               color: elementColor,
               elevation: 2,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(8),
                 onTap: () {
                   showDialog(
                     context: context,
                     builder: (_) => AlertDialog(
-                      title: Text(card.title),
-                      content: Text(card.content),
+                      backgroundColor: secondaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      title: Text(
+                        card.title,
+                        style: const TextStyle(color: textColor),
+                      ),
+                      content: Text(
+                        card.content,
+                        style: const TextStyle(color: textColor),
+                      ),
                       actions: [
                         TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Close')),
+                          onPressed: () => Navigator.pop(context),
+                          style: TextButton.styleFrom(
+                            backgroundColor: darkerSecondaryColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text(
+                            'Close',
+                            style: TextStyle(color: textColor),
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -172,7 +202,6 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: secondaryColor,
         onPressed: () {
-          // Navigate to FlashcardEditPage for creating a new flashcard.  Pass in a new Flashcard with an empty ID.
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => FlashcardEditPage(
@@ -183,8 +212,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
         },
         child: const Icon(Icons.add_circle_outline, size: 45, color: textColor),
       ),
-      floatingActionButtonLocation:
-          FloatingActionButtonLocation.centerFloat, //changed to centerFloat
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }

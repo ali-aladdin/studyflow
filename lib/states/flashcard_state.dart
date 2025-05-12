@@ -9,7 +9,7 @@ class FlashcardState extends ChangeNotifier {
   List<Flashcard> get cards => _cards;
   Logger logger = Logger();
 
-  // Firestore collection reference
+  // Firestore collection reference for the current user's flashcards
   CollectionReference<Flashcard> get flashcardsCollection {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -18,7 +18,7 @@ class FlashcardState extends ChangeNotifier {
     return FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
-        .collection('flashcards') // Changed collection name
+        .collection('flashcards')
         .withConverter<Flashcard>(
           fromFirestore: Flashcard.fromFirestore,
           toFirestore: (Flashcard flashcard, SetOptions? options) =>
@@ -26,11 +26,7 @@ class FlashcardState extends ChangeNotifier {
         );
   }
 
-  FlashcardState() {
-    fetchFlashcards();
-  }
-
-  // Fetch flashcards from Firestore
+  // Fetch flashcards from Firestore for the current user
   Future<void> fetchFlashcards() async {
     try {
       final snapshot = await flashcardsCollection.get();
@@ -38,11 +34,13 @@ class FlashcardState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       logger.e('Error fetching flashcards: $e');
+      _cards = []; // Ensure an empty list in case of error
+      notifyListeners();
       // Handle error (e.g., show a message to the user)
     }
   }
 
-  // Add a new flashcard to Firestore
+  // Add a new flashcard to Firestore for the current user
   Future<void> addCard(Flashcard newCard) async {
     try {
       final docRef = await flashcardsCollection.add(newCard);
@@ -59,6 +57,25 @@ class FlashcardState extends ChangeNotifier {
     }
   }
 
+  // Update an existing flashcard in Firestore
+  Future<void> updateCard(Flashcard updatedCard) async {
+    try {
+      await flashcardsCollection.doc(updatedCard.id).update({
+        'title': updatedCard.title,
+        'content': updatedCard.content,
+        'pinned': updatedCard.pinned,
+      });
+      final index = _cards.indexWhere((card) => card.id == updatedCard.id);
+      if (index != -1) {
+        _cards[index] = updatedCard;
+        notifyListeners();
+      }
+    } catch (e) {
+      logger.e('Error updating flashcard: $e');
+      // Handle error
+    }
+  }
+
   void deleteCard(Flashcard cardToDelete) async {
     try {
       await flashcardsCollection.doc(cardToDelete.id).delete();
@@ -66,32 +83,6 @@ class FlashcardState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       logger.e('Error deleting flashcard: $e');
-    }
-  }
-
-  Future<void> editCardTitle(String id, String newTitle) async {
-    try {
-      await flashcardsCollection.doc(id).update({'title': newTitle});
-      final index = _cards.indexWhere((card) => card.id == id);
-      if (index != -1) {
-        _cards[index] = _cards[index].copyWith(title: newTitle);
-        notifyListeners();
-      }
-    } catch (e) {
-      logger.e('Error updating flashcard title: $e');
-    }
-  }
-
-  Future<void> editCardContent(String id, String newContent) async {
-    try {
-      await flashcardsCollection.doc(id).update({'content': newContent});
-      final index = _cards.indexWhere((card) => card.id == id);
-      if (index != -1) {
-        _cards[index] = _cards[index].copyWith(content: newContent);
-        notifyListeners();
-      }
-    } catch (e) {
-      logger.e('Error updating flashcard content: $e');
     }
   }
 
@@ -105,7 +96,7 @@ class FlashcardState extends ChangeNotifier {
       }
     } catch (e) {
       logger.e('Error pinning flashcard: $e');
-      // Handle error.  You might want to show a message to the user.
+      // Handle error. You might want to show a message to the user.
     }
   }
 }

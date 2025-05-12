@@ -63,23 +63,55 @@ class _NoteEditPageState extends State<NoteEditPage> {
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text('Delete Note'),
+                    backgroundColor: secondaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    title: const Text(
+                      'Delete Note',
+                      style: TextStyle(color: textColor),
+                    ),
                     content: const Text(
-                        'Are you sure you want to delete this note?'),
+                      'Are you sure you want to delete this note?',
+                      style: TextStyle(color: textColor),
+                    ),
                     actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Provider.of<NoteState>(context, listen: false)
-                              .deleteNote(widget.note.id);
-                          Navigator.of(context).pop(); // Close the dialog
-                          Navigator.of(context).pop(); // Go back to the list
-                        },
-                        child: const Text('Delete',
-                            style: TextStyle(color: Colors.red)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: TextButton.styleFrom(
+                              backgroundColor: darkerSecondaryColor,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(color: textColor),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Provider.of<NoteState>(context, listen: false)
+                                  .deleteNote(widget.note.id);
+                              Navigator.of(context).pop(); // Close the dialog
+                              Navigator.of(context)
+                                  .pop(); // Go back to the list
+                            },
+                            style: TextButton.styleFrom(
+                              backgroundColor: darkerSecondaryColor,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
