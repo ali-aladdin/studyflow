@@ -12,10 +12,12 @@ import 'dart:convert'; // Import dart:convert for JSON handling
 
 class ChatPage extends StatefulWidget {
   final String groupId;
+  final bool showBackButton;
 
   const ChatPage({
     super.key,
     required this.groupId,
+    this.showBackButton = false, // New parameter to control back button
   });
 
   @override
@@ -25,26 +27,30 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final String DEVELOPER_ACCESS_TOKEN = "_FfOo5uFpUH_F1KvaQrmOJGqaWl3lkaK";
 
   GroupState? _groupState;
   Logger logger = Logger();
-
-  final String _chatbotPromptPrefix =
-      "You are a helpful and friendly member of a study group.  Reply to the following message:"; // Add context
+  bool _isDisposed =
+      false; // Add a flag to track disposal, important for async operations
 
   @override
   void initState() {
     super.initState();
+    _isDisposed = false; // Initialize the flag
     // Initialize the GroupState with the current group ID
     // Use Future.microtask to avoid calling notifyListeners during build
     Future.microtask(() {
-      Provider.of<GroupState>(context, listen: false).initGroup(widget.groupId);
+      if (!_isDisposed) {
+        Provider.of<GroupState>(context, listen: false)
+            .initGroup(widget.groupId);
+      }
     });
     // Add listener to scroll to bottom on new messages
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<GroupState>(context, listen: false)
-          .addListener(_scrollToBottom);
+      if (!_isDisposed) {
+        Provider.of<GroupState>(context, listen: false)
+            .addListener(_scrollToBottom);
+      }
     });
   }
 
@@ -59,6 +65,7 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    _isDisposed = true; // Set the flag when the widget is disposed
     _controller.dispose();
     _scrollController.dispose();
     // Now use the stored reference to remove the listener.
@@ -67,6 +74,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _scrollToBottom() {
+    if (_isDisposed) return; // Important: Check if disposed here.
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
@@ -89,7 +97,7 @@ class _ChatPageState extends State<ChatPage> {
         // Send to chatbot API and handle response
         await _sendToChatbot(botMessage);
       } else {
-        //  Optionally send a message to the group indicating that the user needs to provide a message after @bot
+        //  Optionally send a message to the group indicating that the user needs to provide a message after @bot
         Provider.of<GroupState>(context, listen: false)
             .sendMessage("Please provide a message for the bot after @bot");
       }
@@ -129,23 +137,31 @@ class _ChatPageState extends State<ChatPage> {
         final responseData = json.decode(response.body);
         final botReply = responseData['choices'][0]['message']['content'] ??
             "I couldn't understand that.";
-        Provider.of<GroupState>(context, listen: false)
-            .sendMessageByBot(botReply);
+        if (!_isDisposed) {
+          Provider.of<GroupState>(context, listen: false)
+              .sendMessageByBot(botReply);
+        }
       } else {
         logger
             .e("Chatbot API error: ${response.statusCode} - ${response.body}");
-        Provider.of<GroupState>(context, listen: false).sendMessageByBot(
-            "Sorry, the bot is having trouble. Please try again later. Error: ${response.statusCode}");
+        if (!_isDisposed) {
+          Provider.of<GroupState>(context, listen: false).sendMessageByBot(
+              "Sorry, the bot is having trouble. Please try again later. Error: ${response.statusCode}");
+        }
       }
     } catch (e) {
       if (e is SocketException) {
         logger.e("Network error communicating with chatbot API: $e");
-        Provider.of<GroupState>(context, listen: false).sendMessageByBot(
-            "Sorry, I couldn't reach the bot. Please check your network connection.");
+        if (!_isDisposed) {
+          Provider.of<GroupState>(context, listen: false).sendMessageByBot(
+              "Sorry, I couldn't reach the bot. Please check your network connection.");
+        }
       } else {
         logger.e("Error communicating with chatbot API: $e");
-        Provider.of<GroupState>(context, listen: false).sendMessageByBot(
-            "Sorry, I couldn't reach the bot. An unexpected error occurred.");
+        if (!_isDisposed) {
+          Provider.of<GroupState>(context, listen: false).sendMessageByBot(
+              "Sorry, I couldn't reach the bot. An unexpected error occurred.");
+        }
       }
     }
   }
@@ -184,21 +200,27 @@ class _ChatPageState extends State<ChatPage> {
             if (mounted) {
               Navigator.of(context).pop(); //remove the current screen
             }
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Group deleted as it was empty')),
-            );
+            if (!_isDisposed && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Group deleted as it was empty')),
+              );
+            }
           } else {
             // There are members, so don't delete the group
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('Cannot delete group: Members still exist')),
-            );
+            if (!_isDisposed && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('Cannot delete group: Members still exist')),
+              );
+            }
           }
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Group does not exist')),
-        );
+        if (!_isDisposed && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Group does not exist')),
+          );
+        }
       }
     } catch (e) {
       // Handle errors, such as network issues or permission problems
@@ -225,6 +247,12 @@ class _ChatPageState extends State<ChatPage> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: widget.showBackButton
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: textColor),
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : null,
         centerTitle: true,
         backgroundColor: secondaryColor,
         title: GestureDetector(
@@ -283,9 +311,11 @@ class _ChatPageState extends State<ChatPage> {
                   Navigator.of(context).pop(); // Pop ChatPage
                   // The HomeScreen UI will automatically update as groupState.isInGroup becomes false
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString())),
-                  );
+                  if (!_isDisposed && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString())),
+                    );
+                  }
                 }
               }
             },

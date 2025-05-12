@@ -78,6 +78,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _updateEmail(String newEmail) async {
     if (_user == null) {
       logger.e('User not logged in');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User not logged in.')),
+        );
+      }
       return;
     }
 
@@ -87,16 +92,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
           .collection('users')
           .doc(_user.uid)
           .update({'email': newEmail});
-      setState(() {
-        _email = newEmail;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email updated')),
-      );
+      if (mounted) {
+        setState(() {
+          _email = newEmail;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Email updated')),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      logger.e('FirebaseAuthException updating email: $e');
+      String errorMessage = 'Failed to update email: ';
+      switch (e.code) {
+        case 'invalid-email':
+          errorMessage += 'The email address is badly formatted.';
+          break;
+        case 'user-disabled':
+          errorMessage += 'The user account has been disabled.';
+          break;
+        case 'user-not-found':
+          errorMessage +=
+              'There is no user record corresponding to this identifier.';
+          break;
+        case 'operation-not-allowed':
+          errorMessage += 'This operation is not allowed.';
+          break;
+        case 'requires-recent-login':
+          errorMessage +=
+              'This operation is sensitive and requires recent authentication. Log in again before retrying.';
+          break;
+        default:
+          errorMessage += 'An unknown error occurred.';
+      }
+      if (mounted) {
+        _showErrorSnackBar(errorMessage);
+      }
     } catch (e) {
       logger.e('Error updating email: $e');
-      _showErrorSnackBar(
-          'Failed to update email.  Check your password and the new email address.');
+      if (mounted) {
+        _showErrorSnackBar(
+            'Failed to update email. An unexpected error occurred: $e');
+      }
     }
   }
 

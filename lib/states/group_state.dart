@@ -3,12 +3,18 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:logger/logger.dart';
 import 'package:studyflow_v2/classes/group.dart';
 import 'package:studyflow_v2/classes/message.dart';
 
 class GroupState extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   User? _currentUser = FirebaseAuth.instance.currentUser;
+
+  //! TEST
+  final FirebaseAuth _auth = FirebaseAuth.instance; // Add FirebaseAuth instance
+  final Logger _logger = Logger();
+  //! TEST
 
   // NEW FIELD: _activeGroupId
   // Stores the ID of the group the user is currently viewing.
@@ -516,6 +522,48 @@ class GroupState extends ChangeNotifier {
     } catch (e) {
       if (kDebugMode) print("Error leaving group: $e");
       rethrow; // Rethrow error so UI can catch the owner case
+    }
+  }
+
+  //! TEST
+
+  Future<void> addUserToGroup(String groupId, String userId) async {
+    try {
+      // 1.  Add the user's UID to the group's members list in Firestore.
+      final groupRef = _firestore.collection('groups').doc(groupId);
+      await groupRef.update({
+        'members': FieldValue.arrayUnion([userId])
+      });
+
+      // 2. Optionally, update the local state (if you're managing members locally).
+      //    This depends on how your GroupState class is structured.  For example:
+      if (currentGroup != null) {
+        currentGroup!.members.add(userId); // Assuming you have a members list
+        notifyListeners();
+      }
+      _logger.i('User $userId added to group $groupId');
+    } catch (e) {
+      _logger.e('Error adding user to group: $e');
+      //  Consider showing a user-friendly message using a SnackBar or a dialog.
+      notifyListeners(); // Ensure listeners are notified on error, too.
+      rethrow; // rethrow the error so that the caller can handle it as well
+    }
+  }
+
+  //method to get user id from email
+  Future<String?> getUserIdFromEmail(String email) async {
+    try {
+      final userSnapshot = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .get();
+      if (userSnapshot.docs.isNotEmpty) {
+        return userSnapshot.docs.first.id;
+      }
+      return null;
+    } catch (e) {
+      _logger.e("Error getting user ID from email: $e");
+      return null;
     }
   }
 }

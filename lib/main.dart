@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:studyflow_v2/firebase_options.dart';
 import 'package:studyflow_v2/misc/colors.dart';
-import 'package:studyflow_v2/pages/home_page.dart';
+import 'package:studyflow_v2/pages/splash_screen.dart';
 import 'package:studyflow_v2/states/flashcard_state.dart';
 import 'package:studyflow_v2/states/group_state.dart';
 import 'package:studyflow_v2/states/home_state.dart';
@@ -49,7 +49,7 @@ class MyApp extends StatelessWidget {
             appBarTheme: AppBarTheme(
               foregroundColor: textColor,
             )),
-        home: HomePage(),
+        home: SplashScreen(),
       ),
     );
   }

@@ -153,22 +153,6 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       style: TextStyle(color: textColor)),
                 ),
               const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Mute not implemented yet')),
-                  );
-                  Navigator.pop(context);
-                },
-                style: TextButton.styleFrom(
-                  backgroundColor: darkerSecondaryColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text('Mute', style: TextStyle(color: textColor)),
-              ),
-              const SizedBox(height: 8),
               if (canKick)
                 TextButton(
                   onPressed: () {
@@ -183,22 +167,6 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                   ),
                   child: const Text('Kick', style: TextStyle(color: textColor)),
                 ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Ban not implemented yet')),
-                  );
-                  Navigator.pop(context);
-                },
-                style: TextButton.styleFrom(
-                  backgroundColor: darkerSecondaryColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text('Ban', style: TextStyle(color: textColor)),
-              ),
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -264,7 +232,24 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            //! TEST
+            /*
+            TextButton(
+              onPressed: () => groupState.addUserToGroup(
+                  groupState.currentGroup?.groupId ?? "fail",
+                  "RjrRxn89FjO3cRKNMbAPTgpTrCN2"),
+              child: Text("Add Member 1"),
+            ),
             const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => groupState.addUserToGroup(
+                  groupState.currentGroup?.groupId ?? "fail",
+                  "7xQhvf1CsySp9wQWo0dwGVbKZsA3"),
+              child: Text("Add Member 2"),
+            ),
+            const SizedBox(height: 16),
+            */
+            //! TEST
             const Text(
               textAlign: TextAlign.left,
               'Group Name',
@@ -353,7 +338,7 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
 
             Expanded(
               child: ListView.builder(
-                itemCount: memberUids.length, // Iterate over UIDs
+                itemCount: memberUids.length,
                 itemBuilder: (context, idx) {
                   final memberUid = memberUids[idx]; // Get the member UID
                   final isMemberOwner = groupState.groupOwnerId == memberUid;
@@ -369,27 +354,32 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: ListTile(
-                      leading: isOwner &&
-                              !isSelf // Only show options icon to owner (not on self)
-                          ? IconButton(
+                      // Display member Username
+                      title: Text(
+                        memberUsername + (isMemberOwner ? ' (Owner)' : ''),
+                        style: const TextStyle(color: textColor),
+                      ),
+                      trailing: Row(
+                        // Use Row as the trailing widget
+                        mainAxisSize: MainAxisSize
+                            .min, // important to keep the row size to a minimum.
+                        children: [
+                          if (isSelf && !isOwner) //relocated
+                            const Text('(You)',
+                                style: TextStyle(
+                                    color: textColor,
+                                    fontStyle: FontStyle.italic)),
+                          if (isOwner &&
+                              !isSelf) // Only show options icon to owner (not on self) //relocated
+                            IconButton(
                               icon:
                                   const Icon(Icons.more_vert, color: textColor),
                               // Pass the member's UID to the options dialog
                               onPressed: () =>
                                   _showMemberOptions(memberUid, groupState),
-                            )
-                          : null, // Hide icon if not owner or is self
-                      // Display member Username
-                      title: Text(
-                          memberUsername + (isMemberOwner ? ' (Owner)' : ''),
-                          style: const TextStyle(color: textColor)),
-                      trailing: isSelf && !isOwner
-                          ? const Text('(You)',
-                              style: TextStyle(
-                                  color: textColor,
-                                  fontStyle: FontStyle.italic))
-                          : null,
-
+                            ),
+                        ],
+                      ),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 0),
                     ),

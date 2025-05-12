@@ -1,3 +1,7 @@
+import 'dart:math';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:studyflow_v2/misc/colors.dart';
@@ -6,122 +10,140 @@ import 'package:studyflow_v2/states/group_state.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+  final int CODE_LENGTH = 10;
+
+  String _generateRandomCode(int length) {
+    const chars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    final rand = Random.secure();
+    return List.generate(length, (_) => chars[rand.nextInt(chars.length)])
+        .join();
+  }
+
+  Future<String?> getUsername() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      return doc.data()?['username'] as String?;
+    }
+    return null;
+  }
 
   // NEW METHOD: _showCreateGroupDialog
   // Shows a dialog to create a new group.
-  void _showCreateGroupDialog(BuildContext context, GroupState groupState) {
-    final nameController = TextEditingController();
-    final codeController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Create New Group'),
-        backgroundColor: secondaryColor,
-        titleTextStyle: const TextStyle(color: textColor),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                  labelText: 'Group Name',
-                  labelStyle: TextStyle(color: textColor)),
-              style: const TextStyle(color: textColor),
-            ),
-            TextField(
-              controller: codeController,
-              decoration: const InputDecoration(
-                  labelText: 'Group Code',
-                  labelStyle: TextStyle(color: textColor)),
-              style: const TextStyle(color: textColor),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: textColor)),
-          ),
-          TextButton(
-            onPressed: () async {
-              final name = nameController.text.trim();
-              final code = codeController.text.trim();
-              if (name.isNotEmpty && code.isNotEmpty) {
-                // Call createGroup and navigate on success
-                String? groupId = await groupState.createGroup(name, code);
-                if (groupId != null) {
-                  Navigator.of(context).pop(); // Dismiss dialog
-                  // Navigate to ChatPage
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => ChatPage(groupId: groupId)),
-                  );
-                } else {
-                  // Handle creation failure (e.g., show error message)
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text(
-                            'Failed to create group. Code might be taken.')),
-                  );
-                }
-              }
-            },
-            child: const Text('Create', style: TextStyle(color: textColor)),
-          ),
-        ],
-      ),
-    );
+  void createGroup(BuildContext context, GroupState groupState) async {
+    String? name = await getUsername() ?? 'placeholder username';
+    String? code = _generateRandomCode(CODE_LENGTH);
+    // Call createGroup and navigate on success
+    String? groupId = await groupState.createGroup('$name\'s group', code);
+    if (groupId != null) {
+      // Navigate to ChatPage
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ChatPage(groupId: groupId)),
+      );
+    } else {
+      // Handle creation failure (e.g., show error message)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Failed to create group. Code might be taken.')),
+      );
+    }
   }
 
   // NEW METHOD: _showJoinGroupDialog
   // Shows a dialog to join an existing group.
   void _showJoinGroupDialog(BuildContext context, GroupState groupState) {
+    final formKey = GlobalKey<FormState>();
     final codeController = TextEditingController();
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Join Group'),
+      builder: (_) => AlertDialog(
         backgroundColor: secondaryColor,
-        titleTextStyle: const TextStyle(color: textColor),
-        content: TextField(
-          controller: codeController,
-          decoration: const InputDecoration(
-              labelText: 'Group Code', labelStyle: TextStyle(color: textColor)),
-          style: const TextStyle(color: textColor),
+        title: const Text(
+          'Join Group',
+          style: TextStyle(color: textColor),
+        ),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: codeController,
+            style: const TextStyle(color: textColor),
+            decoration: InputDecoration(
+              labelText: 'Group Code',
+              labelStyle: const TextStyle(color: textColor),
+              filled: true,
+              fillColor: primaryColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Please enter a group code';
+              }
+              return null;
+            },
+          ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: textColor)),
-          ),
-          TextButton(
-            onPressed: () async {
-              final code = codeController.text.trim();
-              if (code.isNotEmpty) {
-                // Call joinGroup and navigate on success
-                String? groupId = await groupState.joinGroup(code);
-                if (groupId != null) {
-                  Navigator.of(context).pop(); // Dismiss dialog
-                  // Navigate to ChatPage
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => ChatPage(groupId: groupId)),
-                  );
-                } else {
-                  // Handle join failure (e.g., show error message)
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text(
-                            'Failed to join group. Invalid code or already a member.')),
-                  );
-                }
-              }
-            },
-            child: const Text('Join', style: TextStyle(color: textColor)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  backgroundColor: darkerSecondaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: textColor),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  if (formKey.currentState!.validate()) {
+                    final code = codeController.text.trim();
+                    String? groupId = await groupState.joinGroup(code);
+                    if (groupId != null) {
+                      Navigator.pop(context); // Dismiss dialog
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatPage(groupId: groupId),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Failed to join group. Invalid code or already a member.',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: darkerSecondaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Join',
+                  style: TextStyle(color: textColor),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -227,7 +249,7 @@ class HomeScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 18, color: textColor)),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed: () => _showCreateGroupDialog(
+                onPressed: () => createGroup(
                     context, groupState), // Pass context and groupState
                 style: ElevatedButton.styleFrom(backgroundColor: elementColor),
                 child: const Text('Create New Group',
