@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:studyflow_v2/misc/colors.dart'; // Assuming these color definitions
+import 'package:studyflow_v2/misc/colors.dart';
 
 class AboutUsPage extends StatelessWidget {
   const AboutUsPage({super.key});
@@ -8,115 +8,142 @@ class AboutUsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: secondaryColor,
         centerTitle: true,
-        backgroundColor:
-            secondaryColor, // Use secondaryColor from your colors.dart
         title: const Text(
-          'About Us',
+          'ABOUT US',
           style: TextStyle(
-            fontWeight: FontWeight.w500,
-            fontSize: 26,
-            color: textColor, // Use textColor from your colors.dart
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: textColor,
+            letterSpacing: 1.2,
           ),
         ),
+        leading: const BackButton(color: textColor),
       ),
       body: Container(
-        color: primaryColor, // Use primaryColor as the background
-        padding: const EdgeInsets.all(16.0),
+        color: primaryColor,
         child: SingleChildScrollView(
-          // Added SingleChildScrollView
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              // App Title
+            children: [
               const Text(
                 'StudyFlow',
                 style: TextStyle(
-                  fontSize: 36.0,
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: textColor, // Use textColor
+                  color: textColor,
                 ),
               ),
-              const SizedBox(height: 8.0),
+              const SizedBox(height: 8),
               const Text(
-                'Empowering Students to Succeed',
+                'Empowering Students to succeed',
                 style: TextStyle(
-                  fontSize: 18.0,
-                  color: textColor, // Use textColor
+                  fontSize: 16,
+                  color: textColor,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 24.0),
+              const SizedBox(height: 24),
 
-              // Our Mission Section
+              // Our Mission
               Container(
-                padding: const EdgeInsets.all(16.0),
-                // Removed color: Colors.yellow, and using the defined color instead
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color:
-                      elementColor, // Use elementColor for the section background
-                  borderRadius: BorderRadius.circular(8.0),
+                  color: secondaryColor,
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
+                  children: [
                     Text(
                       'Our Mission',
                       style: TextStyle(
-                        fontSize: 24.0,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: textColor, // Use textColor
+                        color: textColor,
                       ),
                     ),
-                    SizedBox(height: 8.0),
+                    SizedBox(height: 8),
                     Text(
                       'StudyFlow helps students collaborate, learn, and achieve their academic goals.',
                       style: TextStyle(
-                        fontSize: 16.0,
-                        color: textColor, // Use textColor
+                        fontSize: 16,
+                        color: textColor,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24.0),
+              const SizedBox(height: 24),
 
-              // Meet the Team Section
-              const Text(
-                'Meet the Team',
-                style: TextStyle(
-                  fontSize: 24.0,
-                  fontWeight: FontWeight.bold,
-                  color: textColor, // Use textColor
-                ),
-              ),
-              const SizedBox(height: 16.0),
-              Wrap(
-                // Use Wrap for better layout on smaller screens
-                alignment: WrapAlignment.center,
-                spacing: 16.0, // Add spacing between team members
-                children: <Widget>[
-                  _buildTeamMember('Ali Aladdin', 'Dev'),
-                  _buildTeamMember('Emad Diab', 'Dev'),
+              // Meet the Team
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.people, color: textColor),
+                  SizedBox(width: 8),
+                  Text(
+                    'Meet the Team',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 24.0),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: const [
+                  _TeamMember(name: 'Ali Aladdin', role: 'Dev'),
+                  _TeamMember(name: 'Emad Diab', role: 'Dev'),
+                ],
+              ),
+              const SizedBox(height: 24),
 
-              // Contact Us Section
-              const Text(
-                'Contact Us',
-                style: TextStyle(
-                  fontSize: 24.0,
-                  fontWeight: FontWeight.bold,
-                  color: textColor, // Use textColor
+              // Contact Us
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: secondaryColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.contact_mail, color: textColor),
+                        SizedBox(width: 8),
+                        Text(
+                          'Contact  us',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 16),
+                    _ContactItem(
+                      icon: Icons.email,
+                      text: 'support@studyflow.app',
+                    ),
+                    SizedBox(height: 12),
+                    _ContactItem(
+                      icon: Icons.alternate_email,
+                      text: '@StudyFlowApp',
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16.0),
-              _buildContactInfo('support@studyflow.app'),
-              _buildContactInfo(
-                  '@StudyFlowApp'), //  Made both contact info use the helper
-              const SizedBox(height: 24.0),
+              const SizedBox(height: 32),
 
               // Powered by Firebase
               Row(
@@ -125,16 +152,22 @@ class AboutUsPage extends StatelessWidget {
                   const Text(
                     'Powered by ',
                     style: TextStyle(
-                      fontSize: 16.0,
-                      color: textColor, // Use textColor
+                      fontSize: 16,
+                      color: textColor,
                     ),
                   ),
-                  //  Added a sized box to control the size of the image.
-                  SizedBox(
-                    height: 24, // Adjust as needed
-                    child: Image.asset(
-                      'assets/firebase_logo.png', //  Path to your Firebase logo,  Add this to your assets
+                  const Text(
+                    'FireBase',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: textColor,
                     ),
+                  ),
+                  const SizedBox(width: 6),
+                  Image.asset(
+                    'assets/firebase_logo.png',
+                    height: 24,
                   ),
                 ],
               ),
@@ -144,58 +177,56 @@ class AboutUsPage extends StatelessWidget {
       ),
     );
   }
+}
 
-  // Helper method for building team member info
-  static Widget _buildTeamMember(String name, String role) {
+class _TeamMember extends StatelessWidget {
+  final String name;
+  final String role;
+
+  const _TeamMember({required this.name, required this.role});
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
-      children: <Widget>[
-        const Icon(
-          // Using a user icon
-          Icons.person,
-          size: 48.0,
-          color: textColor, // Use textColor
-        ),
-        const SizedBox(height: 8.0),
+      children: [
         Text(
           name,
           style: const TextStyle(
-            fontSize: 16.0,
-            fontWeight: FontWeight.bold,
-            color: textColor, // Use textColor
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: textColor,
           ),
         ),
+        const SizedBox(height: 4),
         Text(
-          role,
+          '($role)',
           style: const TextStyle(
-            fontSize: 14.0,
-            color: textColor, // Use textColor
+            fontSize: 14,
+            color: textColor,
           ),
         ),
       ],
     );
   }
+}
 
-  //Helper method for building contact info
-  static Widget _buildContactInfo(String contact) {
-    IconData icon;
-    if (contact.contains('@')) {
-      icon = Icons.mail;
-    } else {
-      icon = Icons.account_circle; //  Using a generic icon
-    }
+class _ContactItem extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _ContactItem({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(
-          icon,
-          color: textColor, // Use textColor
-        ),
-        const SizedBox(width: 8.0),
+        Icon(icon, color: textColor),
+        const SizedBox(width: 8),
         Text(
-          contact,
+          text,
           style: const TextStyle(
-            fontSize: 16.0,
-            color: textColor, // Use textColor
+            fontSize: 16,
+            color: textColor,
           ),
         ),
       ],

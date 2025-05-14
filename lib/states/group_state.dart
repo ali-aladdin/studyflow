@@ -100,11 +100,17 @@ class GroupState extends ChangeNotifier {
       (snapshot) async {
         if (snapshot.exists) {
           _currentGroup = Group.fromFirestore(snapshot);
-          // Collect UIDs from members and owner
+
+          // ✅ Detect if current user has been kicked
+          if (!_currentGroup!.members.contains(_currentUser?.uid)) {
+            if (kDebugMode) print("You have been removed from this group.");
+            leaveGroup(); // Force leave
+            return;
+          }
+
+          // Fetch usernames (members + owner)
           Set<String> uidsToFetch = Set.from(_currentGroup!.members);
           uidsToFetch.add(_currentGroup!.ownerId);
-
-          // Fetch usernames for these UIDs
           await _fetchUsernamesForUids(uidsToFetch.toList());
           notifyListeners();
         } else {
@@ -362,7 +368,15 @@ class GroupState extends ChangeNotifier {
       await _firestore.collection('groups').doc(_activeGroupId).update({
         'members': FieldValue.arrayRemove([userIdToKick]), // Remove by UID
       });
-      // Stream listener updates _currentGroup
+      // Stream listener updates _currentGroup for other members
+
+      // If the kicked user is the current user, they should leave the group locally.
+      if (userIdToKick == _currentUser?.uid) {
+        leaveGroup();
+        // Optionally, navigate the user away from the group screen if they are on it.
+        // This navigation logic should typically be handled in your UI layer
+        // after this method completes.
+      }
     } catch (e) {
       if (kDebugMode) print("Error kicking member: $e");
     }

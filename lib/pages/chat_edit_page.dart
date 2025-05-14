@@ -5,28 +5,16 @@ import 'package:studyflow_v2/misc/colors.dart';
 import 'package:studyflow_v2/states/group_state.dart';
 
 class GroupSettingsScreen extends StatefulWidget {
-  // REMOVED: final List members;
-
-  // NEW FIELD: groupId
-  // The ID of the active group from Firestore.
   final String groupId;
 
-  const GroupSettingsScreen(
-      {super.key, required this.groupId}); // REQUIRE group ID
+  const GroupSettingsScreen({super.key, required this.groupId});
 
   @override
   _GroupSettingsScreenState createState() => _GroupSettingsScreenState();
 }
 
 class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
-  bool _codeVisible = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // No need to call initGroup here, ChatPage already initialized GroupState
-    // with this groupId. This screen just watches that state instance.
-  }
+  bool _codeVisible = false; //? to toggle the group code display
 
   // Modified to take GroupState as a parameter
   void _showEditNameDialog(GroupState groupState) {

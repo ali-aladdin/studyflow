@@ -112,8 +112,8 @@ class _ChatPageState extends State<ChatPage> {
 
   // New method: _sendToChatbot
   Future<void> _sendToChatbot(String message) async {
-    const apiKey =
-        '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';
+    const apiKey = '';
+
     const String apiUrl = 'https://api.openai.com/v1/chat/completions';
 
     try {
@@ -217,14 +217,11 @@ class _ChatPageState extends State<ChatPage> {
         }
       } else {
         if (!_isDisposed && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Group does not exist')),
-          );
+          logger.i('Group does not exist');
         }
       }
     } catch (e) {
-      // Handle errors, such as network issues or permission problems
-      logger.e('Error deleting group: $e'); //important
+      logger.e('Error deleting group: $e');
     }
   }
 
