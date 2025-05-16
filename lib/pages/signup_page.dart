@@ -38,29 +38,24 @@ class _SignUpPageState extends State<SignUpPage> {
     });
     try {
       if (_formKey.currentState!.validate()) {
-        // 1. Create user with email and password using Firebase Authentication
         final userCredential =
             await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text,
           password: _passwordController.text,
         );
 
-        // 2. Get the user's UID
         final uid = userCredential.user!.uid;
 
-        // 3. Store additional user data in Firestore
         await FirebaseFirestore.instance.collection('users').doc(uid).set({
           'email': _emailController.text,
           'username': _usernameController.text,
-          'uid': uid, // Store the UID for easy access later
+          'uid': uid,
         });
         logger.i('Signed up successfully!');
         resetControllers();
-        //pop to signin
         Navigator.of(context).pop();
       }
     } on FirebaseAuthException catch (e) {
-      // Handle Firebase Auth errors (e.g., email already in use)
       logger.i('Error signing up: ${e.message}');
       if (e.code == 'email-already-in-use') {
         setState(() {
@@ -79,9 +74,8 @@ class _SignUpPageState extends State<SignUpPage> {
           _emailError = 'Error signing up.';
         });
       }
-      resetControllers(); // Important: rethrow the error to be handled by the caller
+      resetControllers();
     } catch (e) {
-      // Handle other errors (e.g., Firestore error)
       logger.i('Error creating user in Firestore: $e');
       setState(() {
         _emailError = 'Error creating user.';
@@ -112,12 +106,11 @@ class _SignUpPageState extends State<SignUpPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Image.asset(
-                    'assets/signuplogoandtext.png', // Make sure this path is correct
+                    'assets/signuplogoandtext.png',
                     width: 190,
                     height: 190,
                   ),
                   const SizedBox(height: 24),
-                  // Email Input Field
                   TextFormField(
                     controller: _emailController,
                     decoration: InputDecoration(
@@ -132,9 +125,8 @@ class _SignUpPageState extends State<SignUpPage> {
                       ),
                       border: OutlineInputBorder(
                         borderSide: BorderSide(
-                          color: _emailError.isNotEmpty
-                              ? Colors.red
-                              : textColor, // Change border color on error
+                          color:
+                              _emailError.isNotEmpty ? Colors.red : textColor,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -142,12 +134,10 @@ class _SignUpPageState extends State<SignUpPage> {
                           width: 2.5,
                           color: _emailError.isNotEmpty
                               ? Colors.red
-                              : secondaryColor, // Change border color on error
+                              : secondaryColor,
                         ),
                       ),
-                      errorText: _emailError.isNotEmpty
-                          ? _emailError
-                          : null, // Show Error
+                      errorText: _emailError.isNotEmpty ? _emailError : null,
                       errorStyle: const TextStyle(height: 0),
                     ),
                     keyboardType: TextInputType.emailAddress,
@@ -159,7 +149,6 @@ class _SignUpPageState extends State<SignUpPage> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  // Username Input Field
                   TextFormField(
                     controller: _usernameController,
                     decoration: InputDecoration(
@@ -176,7 +165,7 @@ class _SignUpPageState extends State<SignUpPage> {
                         borderSide: BorderSide(
                           color: _usernameError.isNotEmpty
                               ? Colors.red
-                              : textColor, // Change border color on error
+                              : textColor,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -184,12 +173,11 @@ class _SignUpPageState extends State<SignUpPage> {
                           width: 2.5,
                           color: _usernameError.isNotEmpty
                               ? Colors.red
-                              : secondaryColor, // Change border color on error
+                              : secondaryColor,
                         ),
                       ),
-                      errorText: _usernameError.isNotEmpty
-                          ? _usernameError
-                          : null, // Show Error
+                      errorText:
+                          _usernameError.isNotEmpty ? _usernameError : null,
                       errorStyle: const TextStyle(height: 0),
                     ),
                     validator: (value) {
@@ -200,7 +188,6 @@ class _SignUpPageState extends State<SignUpPage> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  // Password Input Field
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _userPassword,
@@ -218,7 +205,7 @@ class _SignUpPageState extends State<SignUpPage> {
                         borderSide: BorderSide(
                           color: _passwordError.isNotEmpty
                               ? Colors.red
-                              : textColor, // Change border color on error
+                              : textColor,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -226,7 +213,7 @@ class _SignUpPageState extends State<SignUpPage> {
                           width: 2.5,
                           color: _passwordError.isNotEmpty
                               ? Colors.red
-                              : secondaryColor, // Change border color on error
+                              : secondaryColor,
                         ),
                       ),
                       suffixIcon: IconButton(
@@ -242,9 +229,8 @@ class _SignUpPageState extends State<SignUpPage> {
                           });
                         },
                       ),
-                      errorText: _passwordError.isNotEmpty
-                          ? _passwordError
-                          : null, // Show Error
+                      errorText:
+                          _passwordError.isNotEmpty ? _passwordError : null,
                       errorStyle: const TextStyle(height: 0),
                     ),
                     validator: (value) {
@@ -255,7 +241,6 @@ class _SignUpPageState extends State<SignUpPage> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  // Sign Up Button
                   ElevatedButton(
                     onPressed: () =>
                         signUpWithEmailUsernameAndPassword(context),
@@ -270,7 +255,6 @@ class _SignUpPageState extends State<SignUpPage> {
                     child: const Text('Sign Up'),
                   ),
                   const SizedBox(height: 16),
-                  // Already Registered Section
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

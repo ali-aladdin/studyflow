@@ -14,11 +14,10 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
-        // ignore: use_build_context_synchronously
         context,
-        MaterialPageRoute(builder: (context) => SignInPage()),
+        MaterialPageRoute(builder: (context) => const SignInPage()),
       );
     });
   }
@@ -35,8 +34,8 @@ class _SplashScreenState extends State<SplashScreen> {
               width: 150,
               height: 150,
             ),
-            SizedBox(height: 15),
-            Text(
+            const SizedBox(height: 15),
+            const Text(
               'StudyFlow',
               style: TextStyle(
                 fontSize: 24,
@@ -44,7 +43,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 color: textColor,
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             CircularProgressIndicator(
               color: secondaryColor,
               strokeWidth: 6,

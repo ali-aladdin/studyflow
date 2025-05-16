@@ -51,15 +51,13 @@ class _NoteEditPageState extends State<NoteEditPage> {
           },
         ),
         actions: [
-          if (widget
-              .note.id.isNotEmpty) // Only show delete if it's an existing note
+          if (widget.note.id.isNotEmpty)
             IconButton(
               icon: const Icon(
                 Icons.delete,
                 color: textColor,
               ),
               onPressed: () {
-                // Show a confirmation dialog before deleting
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
@@ -96,9 +94,8 @@ class _NoteEditPageState extends State<NoteEditPage> {
                             onPressed: () {
                               Provider.of<NoteState>(context, listen: false)
                                   .deleteNote(widget.note.id);
-                              Navigator.of(context).pop(); // Close the dialog
-                              Navigator.of(context)
-                                  .pop(); // Go back to the list
+                              Navigator.of(context).pop();
+                              Navigator.of(context).pop();
                             },
                             style: TextButton.styleFrom(
                               backgroundColor: darkerSecondaryColor,
@@ -174,14 +171,14 @@ class _NoteEditPageState extends State<NoteEditPage> {
         ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(36),
         child: Expanded(
           child: TextFormField(
             textAlign: TextAlign.start,
             textAlignVertical: TextAlignVertical.top,
             controller: _contentController,
             maxLines: null,
-            expands: true,
+            expands: false,
             decoration: const InputDecoration(
               border: OutlineInputBorder(
                 borderSide: BorderSide.none,
@@ -195,19 +192,17 @@ class _NoteEditPageState extends State<NoteEditPage> {
         onPressed: () {
           if (_formKey.currentState!.validate()) {
             final note = Note(
-              id: widget.note.id, // Keep the original ID if editing
+              id: widget.note.id,
               title: _titleController.text,
               content: _contentController.text,
               pinned: widget.note.pinned,
             );
             if (widget.note.id.isEmpty) {
-              // Add new note
               Provider.of<NoteState>(context, listen: false).addNote(note);
             } else {
-              // Update existing note
               Provider.of<NoteState>(context, listen: false).updateNote(note);
             }
-            Navigator.of(context).pop(); // Go back to the list
+            Navigator.of(context).pop();
           }
         },
         child: const Icon(Icons.save, color: textColor),

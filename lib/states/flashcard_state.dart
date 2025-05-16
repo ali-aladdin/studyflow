@@ -9,11 +9,10 @@ class FlashcardState extends ChangeNotifier {
   List<Flashcard> get cards => _cards;
   Logger logger = Logger();
 
-  // Firestore collection reference for the current user's flashcards
   CollectionReference<Flashcard> get flashcardsCollection {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      throw Exception('User not logged in'); // Or handle this appropriately
+      throw Exception('User not logged in');
     }
     return FirebaseFirestore.instance
         .collection('users')
@@ -26,7 +25,6 @@ class FlashcardState extends ChangeNotifier {
         );
   }
 
-  // Fetch flashcards from Firestore for the current user
   Future<void> fetchFlashcards() async {
     try {
       final snapshot = await flashcardsCollection.get();
@@ -34,13 +32,11 @@ class FlashcardState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       logger.e('Error fetching flashcards: $e');
-      _cards = []; // Ensure an empty list in case of error
+      _cards = [];
       notifyListeners();
-      // Handle error (e.g., show a message to the user)
     }
   }
 
-  // Add a new flashcard to Firestore for the current user
   Future<void> addCard(Flashcard newCard) async {
     try {
       final docRef = await flashcardsCollection.add(newCard);
@@ -48,16 +44,14 @@ class FlashcardState extends ChangeNotifier {
           id: docRef.id,
           title: newCard.title,
           content: newCard.content,
-          pinned: newCard.pinned); //get ID
+          pinned: newCard.pinned);
       _cards.add(newFlashcard);
       notifyListeners();
     } catch (e) {
       logger.e('Error adding flashcard: $e');
-      // Handle error
     }
   }
 
-  // Update an existing flashcard in Firestore
   Future<void> updateCard(Flashcard updatedCard) async {
     try {
       await flashcardsCollection.doc(updatedCard.id).update({
@@ -72,7 +66,6 @@ class FlashcardState extends ChangeNotifier {
       }
     } catch (e) {
       logger.e('Error updating flashcard: $e');
-      // Handle error
     }
   }
 
@@ -96,7 +89,6 @@ class FlashcardState extends ChangeNotifier {
       }
     } catch (e) {
       logger.e('Error pinning flashcard: $e');
-      // Handle error. You might want to show a message to the user.
     }
   }
 }

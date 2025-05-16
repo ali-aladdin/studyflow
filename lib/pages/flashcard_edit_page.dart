@@ -51,15 +51,13 @@ class _FlashcardEditPageState extends State<FlashcardEditPage> {
           },
         ),
         actions: [
-          if (widget.card.id
-              .isNotEmpty) // Only show delete if it's an existing flashcard
+          if (widget.card.id.isNotEmpty)
             IconButton(
               icon: const Icon(
                 Icons.delete,
                 color: textColor,
               ),
               onPressed: () {
-                // Show a confirmation dialog before deleting
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
@@ -97,9 +95,8 @@ class _FlashcardEditPageState extends State<FlashcardEditPage> {
                               Provider.of<FlashcardState>(context,
                                       listen: false)
                                   .deleteCard(widget.card);
-                              Navigator.of(context).pop(); // Close the dialog
-                              Navigator.of(context)
-                                  .pop(); // Go back to the list
+                              Navigator.of(context).pop();
+                              Navigator.of(context).pop();
                             },
                             style: TextButton.styleFrom(
                               backgroundColor: darkerSecondaryColor,
@@ -175,14 +172,14 @@ class _FlashcardEditPageState extends State<FlashcardEditPage> {
         ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(36),
         child: Expanded(
           child: TextFormField(
             textAlign: TextAlign.start,
             textAlignVertical: TextAlignVertical.top,
             controller: _contentController,
             maxLines: null,
-            expands: true,
+            expands: false,
             decoration: const InputDecoration(
               border: OutlineInputBorder(
                 borderSide: BorderSide.none,
@@ -196,27 +193,24 @@ class _FlashcardEditPageState extends State<FlashcardEditPage> {
         onPressed: () {
           if (_formKey.currentState!.validate()) {
             final flashcard = Flashcard(
-              id: widget.card.id, // Keep the original ID if editing
+              id: widget.card.id,
               title: _titleController.text,
               content: _contentController.text,
               pinned: widget.card.pinned,
             );
             if (widget.card.id.isEmpty) {
-              // Add new flashcard
               Provider.of<FlashcardState>(context, listen: false)
                   .addCard(flashcard);
             } else {
-              // Update existing flashcard using the new method
               Provider.of<FlashcardState>(context, listen: false)
                   .updateCard(flashcard);
             }
-            Navigator.of(context).pop(); // Go back to the list
+            Navigator.of(context).pop();
           }
         },
         child: const Icon(Icons.save, color: textColor),
       ),
-      floatingActionButtonLocation:
-          FloatingActionButtonLocation.centerFloat, //changed to centerFloat
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }

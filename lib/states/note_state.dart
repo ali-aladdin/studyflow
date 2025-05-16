@@ -9,11 +9,10 @@ class NoteState extends ChangeNotifier {
   List<Note> get notes => _notes;
   Logger logger = Logger();
 
-  // Firestore collection reference
   CollectionReference<Note> get notesCollection {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      throw Exception('User not logged in'); // Or handle this appropriately
+      throw Exception('User not logged in');
     }
     return FirebaseFirestore.instance
         .collection('users')
@@ -29,7 +28,6 @@ class NoteState extends ChangeNotifier {
     fetchNotes();
   }
 
-  // Fetch notes from Firestore
   Future<void> fetchNotes() async {
     try {
       final snapshot = await notesCollection.get();
@@ -37,11 +35,9 @@ class NoteState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       logger.e('Error fetching notes: $e');
-      // Handle error (e.g., show a message to the user)
     }
   }
 
-  // Add a new note to Firestore
   Future<void> addNote(Note note) async {
     try {
       final docRef = await notesCollection.add(note);
@@ -49,16 +45,14 @@ class NoteState extends ChangeNotifier {
           id: docRef.id,
           title: note.title,
           content: note.content,
-          pinned: note.pinned); //get ID
+          pinned: note.pinned);
       _notes.add(newNote);
       notifyListeners();
     } catch (e) {
       logger.e('Error adding note: $e');
-      // Handle error
     }
   }
 
-  // Update an existing note in Firestore
   Future<void> updateNote(Note updatedNote) async {
     try {
       await notesCollection.doc(updatedNote.id).update({
@@ -73,11 +67,9 @@ class NoteState extends ChangeNotifier {
       }
     } catch (e) {
       logger.e('Error updating note: $e');
-      // Handle error
     }
   }
 
-  // Delete a note from Firestore
   Future<void> deleteNote(String noteId) async {
     try {
       await notesCollection.doc(noteId).delete();
@@ -85,11 +77,9 @@ class NoteState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       logger.e('Error deleting note: $e');
-      // Handle error
     }
   }
 
-  // Pin a note
   Future<void> pinNote(String noteId, bool pinned) async {
     try {
       await notesCollection.doc(noteId).update({'pinned': pinned});
@@ -100,7 +90,6 @@ class NoteState extends ChangeNotifier {
       }
     } catch (e) {
       logger.e('Error pinning note: $e');
-      // Handle error.  You might want to show a message to the user.
     }
   }
 }

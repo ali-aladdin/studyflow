@@ -24,11 +24,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     try {
       await FirebaseAuth.instance
           .sendPasswordResetEmail(email: _emailController.text.trim());
-      // Show a success message to the user.  Consider using a dialog.
       logger.i("Email Sent Successfully");
-      Navigator.pop(context); // Go back to the sign-in page
+      Navigator.pop(context); //? go back to sign in
     } on FirebaseAuthException catch (e) {
-      // Handle errors, such as invalid email or user not found
       _emailError = 'Failed to send reset email.';
       if (e.code == 'invalid-email') {
         _emailError = 'Invalid email address.';
@@ -38,7 +36,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       logger.i(_emailError);
       logger.i('Error sending password reset email: ${e.message}');
     } catch (e) {
-      // Handle other errors
+      //* Handle other errors
       logger.i("An unexpected error has occurred.");
       logger.i('Error sending password reset email: $e');
     } finally {
@@ -57,7 +55,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: primaryColor, // Set the background color
+      backgroundColor: primaryColor,
       appBar: AppBar(
         backgroundColor: secondaryColor,
         centerTitle: true,
@@ -68,28 +66,24 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             fontSize: 26,
           ),
         ),
-        automaticallyImplyLeading:
-            false, // Remove the default back button, we'll use a TextButton
+        automaticallyImplyLeading: false,
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment:
-              CrossAxisAlignment.stretch, // Make children stretch
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              style: const TextStyle(color: textColor), // Set text color
+              style: const TextStyle(color: textColor),
               decoration: InputDecoration(
                 labelText: 'Email Address',
                 labelStyle: const TextStyle(color: textColor),
-                errorText:
-                    _emailError.isNotEmpty ? _emailError : null, // Label color
+                errorText: _emailError.isNotEmpty ? _emailError : null,
                 border: OutlineInputBorder(
-                  borderSide: const BorderSide(
-                      color: textColor), // Border color  <--- ADDED THIS LINE
+                  borderSide: const BorderSide(color: textColor),
                   borderRadius: BorderRadius.circular(10.0),
                 ),
                 enabledBorder: OutlineInputBorder(
@@ -106,8 +100,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             ElevatedButton(
               onPressed: sendResetPasswordEmail,
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    darkerSecondaryColor, // Button color  <--- CHANGED THIS LINE
+                backgroundColor: darkerSecondaryColor,
                 foregroundColor: textColor,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -120,7 +113,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       height: 24,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: secondaryColor, // Match the button's text color
+                        color: secondaryColor,
                       ),
                     )
                   : const Text(
@@ -132,7 +125,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             TextButton(
               onPressed: () => Navigator.pop(context),
               style: TextButton.styleFrom(
-                foregroundColor: textColor, // Text color
+                foregroundColor: textColor,
               ),
               child: const Text(
                 'Go Back to Sign In',

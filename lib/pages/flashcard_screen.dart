@@ -92,7 +92,6 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
           ),
           itemBuilder: (context, index) {
             final card = sortedCards[index];
-            //search implementation
             if (_searchController.text.isNotEmpty &&
                 !card.title.toLowerCase().contains(
                       _searchController.text.toLowerCase(),
@@ -100,8 +99,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                 !card.content.toLowerCase().contains(
                       _searchController.text.toLowerCase(),
                     )) {
-              return const SizedBox
-                  .shrink(); // Return an empty widget if it doesn't match
+              return const SizedBox.shrink();
             }
             return Card(
               color: elementColor,

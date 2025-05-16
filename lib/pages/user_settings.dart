@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:provider/provider.dart';
 import 'package:studyflow_v2/misc/colors.dart';
 import 'package:studyflow_v2/pages/aboutus_page.dart';
 import 'package:logger/logger.dart';
 import 'package:studyflow_v2/pages/signin_page.dart';
-import 'package:studyflow_v2/states/group_state.dart';
 
 final logger = Logger();
 
@@ -157,7 +155,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await FirebaseAuth.instance.signOut();
       if (mounted) {
-        Navigator.push(
+        Navigator.pushReplacement(
+          // Use pushReplacement here
           context,
           MaterialPageRoute(builder: (context) => SignInPage()),
         );
@@ -166,14 +165,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       logger.e('Error signing out: $e');
       _showErrorSnackBar('Failed to sign out.');
     }
-
-    FirebaseAuth.instance.authStateChanges().listen((user) {
-      // clear any previous group state
-      Provider.of<GroupState>(context, listen: false).leaveGroup();
-
-      // then update to the new user (or null)
-      Provider.of<GroupState>(context, listen: false).updateCurrentUser(user);
-    });
   }
 
   Future<void> _deleteAccount() async {

@@ -30,7 +30,6 @@ class _NotesScreenState extends State<NotesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Make a copy and sort so pinned are first
     final notes = Provider.of<NoteState>(context).notes;
     final sortedNotes = List<Note>.from(notes)
       ..sort((a, b) {
@@ -57,9 +56,7 @@ class _NotesScreenState extends State<NotesScreen> {
             child: TextField(
               controller: _searchController,
               onChanged: (value) {
-                //  Implement search functionality.
-                // You'll likely want to update the displayed list based on the search term
-                setState(() {}); // Trigger a rebuild to update the list
+                setState(() {});
               },
               decoration: InputDecoration(
                 filled: true,
@@ -85,7 +82,6 @@ class _NotesScreenState extends State<NotesScreen> {
         itemCount: sortedNotes.length,
         itemBuilder: (context, index) {
           final note = sortedNotes[index];
-          //search implementation
           if (_searchController.text.isNotEmpty &&
               !note.title.toLowerCase().contains(
                     _searchController.text.toLowerCase(),
@@ -93,8 +89,7 @@ class _NotesScreenState extends State<NotesScreen> {
               !note.content.toLowerCase().contains(
                     _searchController.text.toLowerCase(),
                   )) {
-            return const SizedBox
-                .shrink(); // Return an empty widget if it doesn't match
+            return const SizedBox.shrink();
           }
           final preview = note.content.length > 50
               ? '${note.content.substring(0, 50)}…'
@@ -102,9 +97,9 @@ class _NotesScreenState extends State<NotesScreen> {
 
           return Card(
             color: elementColor,
-            margin: const EdgeInsets.all(8.0), // Margin around the Card
+            margin: const EdgeInsets.all(8.0),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12.0), // Rounded corners
+              borderRadius: BorderRadius.circular(12.0),
             ),
             child: ListTile(
               title: Text(
@@ -155,7 +150,6 @@ class _NotesScreenState extends State<NotesScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: secondaryColor,
         onPressed: () {
-          // Navigate to NoteEditPage for creating a new note.  Pass in a new Note with an empty ID.
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => NoteEditPage(

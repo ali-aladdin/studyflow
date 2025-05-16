@@ -1,27 +1,31 @@
 class AppUser {
+  final String uid;
   final String email;
   final String username;
-  final String uid;
+  final List<String> joinedGroupIds;
 
   AppUser({
+    required this.uid,
     required this.email,
     required this.username,
-    required this.uid,
+    required this.joinedGroupIds,
   });
 
   factory AppUser.fromMap(Map<String, dynamic> map) {
     return AppUser(
-      username: map['username'],
-      email: map['email'],
-      uid: map['uid'],
+      uid: map['uid'] ?? '',
+      email: map['email'] ?? '',
+      username: map['username'] ?? '',
+      joinedGroupIds: List<String>.from(map['joinedGroupIds'] ?? []),
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
+      'uid': uid,
       'email': email,
       'username': username,
-      'uid': uid,
+      'joinedGroupIds': joinedGroupIds,
     };
   }
 
@@ -29,11 +33,13 @@ class AppUser {
     String? uid,
     String? email,
     String? username,
+    List<String>? joinedGroupIds,
   }) {
     return AppUser(
+      uid: uid ?? this.uid,
       email: email ?? this.email,
       username: username ?? this.username,
-      uid: uid ?? this.uid,
+      joinedGroupIds: joinedGroupIds ?? this.joinedGroupIds,
     );
   }
 }

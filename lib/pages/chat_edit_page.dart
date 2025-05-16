@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:logger/logger.dart';
 import 'package:provider/provider.dart';
 import 'package:studyflow_v2/misc/colors.dart';
 import 'package:studyflow_v2/states/group_state.dart';
@@ -10,16 +11,16 @@ class GroupSettingsScreen extends StatefulWidget {
   const GroupSettingsScreen({super.key, required this.groupId});
 
   @override
-  _GroupSettingsScreenState createState() => _GroupSettingsScreenState();
+  State<GroupSettingsScreen> createState() => _GroupSettingsScreenState();
 }
 
 class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
   bool _codeVisible = false; //? to toggle the group code display
+  Logger logger = Logger();
 
-  // Modified to take GroupState as a parameter
-  void _showEditNameDialog(GroupState groupState) {
-    // Pre-fill with current name from state
-    final controller = TextEditingController(text: groupState.groupName);
+  void _showEditNameDialog(BuildContext context, GroupState groupState) {
+    final controller = TextEditingController(
+        text: groupState.activeGroup?.groupName); //? current grp name
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -76,9 +77,11 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
               ),
               TextButton(
                 onPressed: () {
-                  // Call updateGroupName on GroupState
-                  groupState.updateGroupName(controller.text);
-                  Navigator.of(context).pop();
+                  if (groupState.activeGroupId != null) {
+                    groupState.updateGroupName(
+                        groupState.activeGroupId!, controller.text);
+                    Navigator.of(context).pop();
+                  }
                 },
                 style: TextButton.styleFrom(
                   backgroundColor: primaryColor,
@@ -104,31 +107,44 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
     );
   }
 
-  // Modified to take member's UID and GroupState as parameters
-  void _showMemberOptions(String memberUserId, GroupState groupState) {
-    final currentUserId = groupState.currentUserId;
-    final isOwner = groupState.groupOwnerId == currentUserId;
+  void _showMemberOptions(
+      BuildContext context, String memberUserId, GroupState groupState) {
+    final currentUserId = groupState.currentUser?.uid;
+    final activeGroup = groupState.activeGroup;
+    final isOwner = activeGroup?.ownerId == currentUserId;
     final isSelf = memberUserId == currentUserId;
     final canKick = isOwner && !isSelf;
     final canTransferOwnership = isOwner && !isSelf;
-
-    // Get the username for the member's UID for display in the dialog title
-    String memberUsername = groupState.getUsername(memberUserId);
 
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: secondaryColor,
-        title: Text(memberUsername,
-            style:
-                const TextStyle(color: textColor)), // Display username in title
+        title: FutureBuilder<String>(
+          future: groupState.getUserDisplayName(memberUserId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Text('Loading...',
+                  style: TextStyle(color: textColor));
+            } else if (snapshot.hasError) {
+              print('Error getting username: ${snapshot.error}');
+              return const Text('User', style: TextStyle(color: textColor));
+            } else if (snapshot.hasData) {
+              return Text(snapshot.data!,
+                  style: const TextStyle(color: textColor));
+            } else {
+              return const Text('User', style: TextStyle(color: textColor));
+            }
+          },
+        ),
         content: SingleChildScrollView(
           child: ListBody(
             children: [
-              if (canTransferOwnership)
+              if (canTransferOwnership && activeGroup?.groupId != null)
                 TextButton(
                   onPressed: () {
-                    groupState.transferOwnership(memberUserId); // Pass the UID
+                    groupState.transferOwnership(
+                        activeGroup!.groupId, memberUserId);
                     Navigator.pop(context);
                   },
                   style: TextButton.styleFrom(
@@ -141,10 +157,10 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       style: TextStyle(color: textColor)),
                 ),
               const SizedBox(height: 8),
-              if (canKick)
+              if (canKick && activeGroup?.groupId != null)
                 TextButton(
                   onPressed: () {
-                    groupState.kickMember(memberUserId); // Pass the UID
+                    groupState.kickMember(activeGroup!.groupId, memberUserId);
                     Navigator.pop(context);
                   },
                   style: TextButton.styleFrom(
@@ -173,25 +189,25 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
     );
   }
 
-  // Helper to copy group code
-  void _copyGroupCode(String code) {
-    Clipboard.setData(ClipboardData(text: code)).then((_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Group code copied to clipboard!')),
-      );
-    });
+  void _copyGroupCode(BuildContext context, String? code) {
+    if (code != null) {
+      Clipboard.setData(ClipboardData(text: code)).then((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Group code copied to clipboard!')),
+        );
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final groupState = context.watch<GroupState>();
-    // Get list of member UIDs from state
-    final memberUids = groupState.memberUids;
-    final currentUserId = groupState.currentUserId;
-    final isOwner = groupState.groupOwnerId == currentUserId;
+    final activeGroup = groupState.activeGroup;
+    final currentUserId = groupState.currentUser?.uid;
+    final memberUids = activeGroup?.members ?? [];
+    final isOwner = activeGroup?.ownerId == currentUserId;
 
-    // Show loading indicator if group data isn't ready
-    if (groupState.currentGroup == null) {
+    if (activeGroup == null) {
       return Scaffold(
           appBar: AppBar(
               title: const Text('Loading Settings...',
@@ -220,24 +236,6 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            //! TEST
-            /*
-            TextButton(
-              onPressed: () => groupState.addUserToGroup(
-                  groupState.currentGroup?.groupId ?? "fail",
-                  "RjrRxn89FjO3cRKNMbAPTgpTrCN2"),
-              child: Text("Add Member 1"),
-            ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () => groupState.addUserToGroup(
-                  groupState.currentGroup?.groupId ?? "fail",
-                  "7xQhvf1CsySp9wQWo0dwGVbKZsA3"),
-              child: Text("Add Member 2"),
-            ),
-            const SizedBox(height: 16),
-            */
-            //! TEST
             const Text(
               textAlign: TextAlign.left,
               'Group Name',
@@ -254,21 +252,20 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: ListTile(
-                title: Text(groupState.groupName ?? "Loading...",
+                title: Text(activeGroup.groupName,
                     style: const TextStyle(color: textColor)),
-                trailing: isOwner // Only show edit icon to owner
+                trailing: isOwner
                     ? IconButton(
                         icon: const Icon(Icons.edit, color: textColor),
                         onPressed: () =>
-                            _showEditNameDialog(groupState), // Pass groupState
+                            _showEditNameDialog(context, groupState),
                       )
-                    : null, // Hide icon if not owner
+                    : null, //? show icon only if the user is the owner
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
               ),
             ),
             const SizedBox(height: 32),
-
             const Text(
               textAlign: TextAlign.left,
               'Group Code',
@@ -286,10 +283,7 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
               ),
               child: ListTile(
                 title: Text(
-                  _codeVisible
-                      ? groupState.groupCode ??
-                          "Loading..." // Display code from state
-                      : '••••••••',
+                  _codeVisible ? activeGroup.groupCode : '••••••••',
                   style: const TextStyle(color: textColor),
                 ),
                 trailing: IconButton(
@@ -302,18 +296,14 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                 leading: IconButton(
                   // Add copy button
                   icon: const Icon(Icons.copy, color: textColor),
-                  onPressed: () {
-                    if (groupState.groupCode != null) {
-                      _copyGroupCode(groupState.groupCode!);
-                    }
-                  },
+                  onPressed: () =>
+                      _copyGroupCode(context, activeGroup.groupCode),
                 ),
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
               ),
             ),
             const SizedBox(height: 24),
-
             const Align(
               alignment: Alignment.centerLeft,
               child: Text('Members List',
@@ -323,17 +313,13 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       color: textColor)),
             ),
             const SizedBox(height: 8),
-
             Expanded(
               child: ListView.builder(
                 itemCount: memberUids.length,
                 itemBuilder: (context, idx) {
-                  final memberUid = memberUids[idx]; // Get the member UID
-                  final isMemberOwner = groupState.groupOwnerId == memberUid;
+                  final memberUid = memberUids[idx];
+                  final isMemberOwner = activeGroup.ownerId == memberUid;
                   final isSelf = memberUid == currentUserId;
-
-                  // Get the username for the member's UID using the state's helper
-                  String memberUsername = groupState.getUsername(memberUid);
 
                   return Container(
                     margin: const EdgeInsets.symmetric(vertical: 4),
@@ -342,29 +328,45 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: ListTile(
-                      // Display member Username
-                      title: Text(
-                        memberUsername + (isMemberOwner ? ' (Owner)' : ''),
-                        style: const TextStyle(color: textColor),
+                      title: FutureBuilder<String>(
+                        future: groupState.getUserDisplayName(memberUid),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Text('Loading...',
+                                style: TextStyle(color: textColor));
+                          } else if (snapshot.hasError) {
+                            logger
+                                .e('Error getting username: ${snapshot.error}');
+                            return const Text('User',
+                                style: TextStyle(color: textColor));
+                          } else if (snapshot.hasData) {
+                            final memberUsername = snapshot.data!;
+                            return Text(
+                              memberUsername +
+                                  (isMemberOwner ? ' (Owner)' : ''),
+                              style: const TextStyle(color: textColor),
+                            );
+                          } else {
+                            return const Text('User',
+                                style: TextStyle(color: textColor));
+                          }
+                        },
                       ),
                       trailing: Row(
-                        // Use Row as the trailing widget
-                        mainAxisSize: MainAxisSize
-                            .min, // important to keep the row size to a minimum.
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (isSelf && !isOwner) //relocated
+                          if (isSelf && !isOwner)
                             const Text('(You)',
                                 style: TextStyle(
                                     color: textColor,
                                     fontStyle: FontStyle.italic)),
-                          if (isOwner &&
-                              !isSelf) // Only show options icon to owner (not on self) //relocated
+                          if (isOwner && !isSelf)
                             IconButton(
                               icon:
                                   const Icon(Icons.more_vert, color: textColor),
-                              // Pass the member's UID to the options dialog
-                              onPressed: () =>
-                                  _showMemberOptions(memberUid, groupState),
+                              onPressed: () => _showMemberOptions(
+                                  context, memberUid, groupState),
                             ),
                         ],
                       ),
@@ -375,9 +377,7 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                 },
               ),
             ),
-
-            // Delete Group button (only for owner)
-            if (isOwner) // Only show delete button to owner
+            if (isOwner && activeGroup.groupId != null)
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Align(
@@ -426,11 +426,11 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
                           );
 
                           if (confirmDelete == true) {
-                            await groupState.deleteGroup();
-                            // After deleting, pop both the settings screen and the chat screen
-                            Navigator.of(context).pop(); // Pop settings
-                            Navigator.of(context).pop(); // Pop chat
-                            // The HomeScreen UI will automatically update
+                            await groupState.deleteGroup(activeGroup.groupId);
+                            Navigator.of(context)
+                                .pop(); //? remove settings page
+                            Navigator.of(context)
+                                .pop(); //? go back to the chat page (which will then likely go back to home due to activeGroup being null)
                           }
                         },
                         contentPadding: const EdgeInsets.symmetric(

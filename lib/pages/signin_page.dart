@@ -19,7 +19,6 @@ class _SignInPageState extends State<SignInPage> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _userPassword = true;
-  // bool _rememberMe = false; // Removed
   String _usernameError = '';
   String _passwordError = '';
   Logger logger = Logger();
@@ -49,9 +48,8 @@ class _SignInPageState extends State<SignInPage> {
 
       final userData = querySnapshot.docs.first.data();
       final email = userData['email'];
-      final uid = userData['uid']; // Get the uid here
+      final uid = userData['uid'];
 
-      // 2. Sign in with email and password using Firebase Authentication
       try {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email,
@@ -65,14 +63,13 @@ class _SignInPageState extends State<SignInPage> {
           return;
         } else {
           setState(() {
-            _passwordError = 'Error signing in.'; // generic
+            _passwordError = 'Error signing in.';
           });
           logger.e("FirebaseAuthException: ${e.message}");
-          return; // Exit, so we don't proceed to the next step.
+          return;
         }
       }
 
-      // 3.  Retrieve the user data, since we now have the uid
       final userDoc =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
       if (userDoc.exists) {
@@ -84,13 +81,11 @@ class _SignInPageState extends State<SignInPage> {
       } else {
         logger.i('Error: User data not found in Firestore');
         setState(() {
-          _usernameError =
-              'Error retrieving user data.'; // Or a more specific message.
+          _usernameError = 'Error retrieving user data.';
         });
         return;
       }
     } catch (e) {
-      // Handle other errors (e.g., Firestore error)
       logger.i('Error retrieving user data: $e');
       setState(() {
         _usernameError = 'An error occurred.';
@@ -114,14 +109,10 @@ class _SignInPageState extends State<SignInPage> {
                 children: [
                   Image.asset(
                     'assets/signinlogoandtext.png',
-                    height: MediaQuery.of(context).size.height *
-                        0.2, // Responsive height
-                    width: MediaQuery.of(context).size.width *
-                        0.4, // Responsive width
+                    height: MediaQuery.of(context).size.height * 0.2,
+                    width: MediaQuery.of(context).size.width * 0.4,
                   ),
-                  SizedBox(
-                      height: MediaQuery.of(context).size.height *
-                          0.03), // Responsive spacing
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.03),
                   TextFormField(
                     controller: _usernameController,
                     decoration: InputDecoration(
@@ -160,9 +151,7 @@ class _SignInPageState extends State<SignInPage> {
                       return null;
                     },
                   ),
-                  SizedBox(
-                      height: MediaQuery.of(context).size.height *
-                          0.02), // Responsive spacing
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.02),
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _userPassword,
@@ -217,10 +206,8 @@ class _SignInPageState extends State<SignInPage> {
                   ),
                   SizedBox(height: MediaQuery.of(context).size.height * 0.02),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment
-                        .spaceBetween, // Space between forgot password
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Removed Remember Me Checkbox
                       TextButton(
                         onPressed: () {
                           Navigator.push(
@@ -240,9 +227,7 @@ class _SignInPageState extends State<SignInPage> {
                       ),
                     ],
                   ),
-                  SizedBox(
-                      height: MediaQuery.of(context).size.height *
-                          0.02), // Responsive spacing
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.02),
                   ElevatedButton(
                     onPressed: () => signInWithUsername(context),
                     style: ElevatedButton.styleFrom(
@@ -250,8 +235,7 @@ class _SignInPageState extends State<SignInPage> {
                       backgroundColor: secondaryColor,
                       minimumSize: Size(
                         double.infinity,
-                        MediaQuery.of(context).size.height *
-                            0.06, // Responsive height
+                        MediaQuery.of(context).size.height * 0.06,
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -259,9 +243,7 @@ class _SignInPageState extends State<SignInPage> {
                     ),
                     child: const Text('Login'),
                   ),
-                  SizedBox(
-                      height: MediaQuery.of(context).size.height *
-                          0.02), // Responsive spacing
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.02),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
